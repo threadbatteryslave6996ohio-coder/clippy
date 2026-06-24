@@ -1,0 +1,41 @@
+# Local configuration
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Maven
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Gradle / Android
+.gradle/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+local.properties
+
+# IDEs and editors
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+*.swp
+*.swo
+*~
+
+# Logs and runtime files
+*.log
+*.pid
+*.seed
+*.tmp
+*.temp
+
+# OS metadata
+.DS_Store
+Thumbs.db

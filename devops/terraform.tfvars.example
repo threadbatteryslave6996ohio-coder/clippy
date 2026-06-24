@@ -15,3 +15,18 @@ allowed_ip_addresses = []
 #   }
 # }
 allowed_ip_ranges = {}
+
+# Optional Azure VM that acts like an EC2 alternative for running the server.
+# Set create_server_vm to true, set this repo URL, and provide your SSH public key.
+create_server_vm = false
+server_repo_url  = "https://github.com/replace-me/clippy.git"
+server_repo_ref  = "main"
+server_port      = 8080
+
+# Restrict these in real deployments.
+server_allowed_cidrs = ["0.0.0.0/0"]
+vm_ssh_allowed_cidrs = ["0.0.0.0/0"]
+
+# Example:
+# vm_admin_ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... you@example"
+vm_admin_ssh_public_key = ""
