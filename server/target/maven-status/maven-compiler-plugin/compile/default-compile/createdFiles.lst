@@ -1,0 +1,6 @@
+dev/clippy/server/ClippyServerApplication.class
+dev/clippy/server/ClipboardEntry.class
+dev/clippy/server/ClipboardEntryResponse.class
+dev/clippy/server/ClipboardEntryRequest.class
+dev/clippy/server/ClipboardEntryController.class
+dev/clippy/server/ClipboardEntryRepository.class
