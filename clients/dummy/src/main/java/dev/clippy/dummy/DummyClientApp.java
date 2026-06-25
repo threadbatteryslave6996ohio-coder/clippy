@@ -12,35 +12,32 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.StringJoiner;
 import java.util.UUID;
 
 public final class DummyClientApp {
-    private static final String DOTENV_FILE = ".env";
-
     private final HttpClient httpClient;
     private final URI endpoint;
     private final String clientId;
+    private final String clientToken;
 
-    private DummyClientApp(URI endpoint, String clientId) {
+    private DummyClientApp(URI endpoint, String clientId, String clientToken) {
         this.endpoint = endpoint;
         this.clientId = clientId;
+        this.clientToken = clientToken;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
     }
 
     public static void main(String[] args) throws IOException, InterruptedException {
-        Env env = ClientEnvs.from(loadConfig());
+        Env env = ClientEnvs.load();
         DummyClientApp app = new DummyClientApp(
                 clipboardEndpoint(env.get(ClientEnvs.REMOTE_SERVER_URL)),
-                env.has(ClientEnvs.CLIENT_ID) ? env.get(ClientEnvs.CLIENT_ID) : defaultClientId()
+                env.has(ClientEnvs.CLIENT_ID) ? env.get(ClientEnvs.CLIENT_ID) : defaultClientId(),
+                env.get(ClientEnvs.CLIENT_TOKEN)
         );
 
         if (args.length > 0) {
@@ -88,6 +85,7 @@ public final class DummyClientApp {
         HttpRequest request = HttpRequest.newBuilder(endpoint)
                 .timeout(Duration.ofSeconds(10))
                 .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + clientToken)
                 .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
                 .build();
 
@@ -100,66 +98,6 @@ public final class DummyClientApp {
             return URI.create(trimmed);
         }
         return URI.create(trimmed.replaceAll("/+$", "") + "/clipboard");
-    }
-
-    private static Map<String, String> loadConfig() throws IOException {
-        Map<String, String> values = new HashMap<>(loadDotenv());
-        System.getenv().forEach((name, value) -> {
-            if (value != null && !value.isBlank()) {
-                values.put(name, value);
-            }
-        });
-        return values;
-    }
-
-    private static Map<String, String> loadDotenv() throws IOException {
-        Path path = findDotenv();
-        if (path == null) {
-            return Map.of();
-        }
-
-        Map<String, String> values = new HashMap<>();
-        for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
-            String trimmed = line.trim();
-            if (trimmed.isEmpty() || trimmed.startsWith("#")) {
-                continue;
-            }
-
-            int separator = trimmed.indexOf('=');
-            if (separator <= 0) {
-                continue;
-            }
-
-            String key = trimmed.substring(0, separator).trim();
-            String value = unquote(trimmed.substring(separator + 1).trim());
-            if (!key.isEmpty()) {
-                values.put(key, value);
-            }
-        }
-        return values;
-    }
-
-    private static Path findDotenv() {
-        Path directory = Path.of("").toAbsolutePath();
-        while (directory != null) {
-            Path candidate = directory.resolve(DOTENV_FILE);
-            if (Files.isRegularFile(candidate)) {
-                return candidate;
-            }
-            directory = directory.getParent();
-        }
-        return null;
-    }
-
-    private static String unquote(String value) {
-        if (value.length() >= 2) {
-            char first = value.charAt(0);
-            char last = value.charAt(value.length() - 1);
-            if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
-                return value.substring(1, value.length() - 1);
-            }
-        }
-        return value;
     }
 
     private static String defaultClientId() {

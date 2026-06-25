@@ -2,6 +2,8 @@
 
 Spring Boot API that persists clipboard entries in PostgreSQL.
 
+The server does not own client identities. It validates each clipboard request by calling the separate Clippy auth server.
+
 ## Requirements
 
 - JDK 17+ with `javac` available on `PATH`
@@ -33,21 +35,30 @@ cd ~/Desktop/clippy
 docker compose up -d postgres
 ```
 
-Run the server from the repository root:
+Run the auth server from the repository root in one terminal:
 
 ```bash
 cd ~/Desktop/clippy
-mvn -pl server spring-boot:run
+mvn -pl auth/server spring-boot:run
 ```
 
-Or, if your shell is already in `~/Desktop/clippy/server`, run the server without `-pl server`:
+Build and run this app server from the repository root in another terminal:
+
+```bash
+cd ~/Desktop/clippy
+mvn -pl server -am package
+java -jar server/target/clippy-server-0.1.0-SNAPSHOT.jar
+```
+
+Or, if your shell is already in `~/Desktop/clippy/server`, invoke Maven from the root POM so it can include the auth client module:
 
 ```bash
 cd ~/Desktop/clippy/server
-mvn spring-boot:run
+mvn -f ../pom.xml -pl server -am package
+java -jar target/clippy-server-0.1.0-SNAPSHOT.jar
 ```
 
-The server listens on `http://localhost:8080` by default.
+The app server listens on `http://localhost:8080` by default. The auth server listens on `http://localhost:8081` by default.
 
 ## Configuration
 
@@ -58,6 +69,7 @@ SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/clippy
 SPRING_DATASOURCE_USERNAME=clippy
 SPRING_DATASOURCE_PASSWORD=clippy
 SERVER_PORT=8080
+CLIPPY_AUTH_BASE_URL=http://localhost:8081
 ```
 
 Set those environment variables before running Maven to override them.
@@ -67,6 +79,7 @@ Set those environment variables before running Maven to override them.
 ```http
 POST /clipboard
 Content-Type: application/json
+Authorization: Bearer <client-token>
 ```
 
 ```json
@@ -79,11 +92,13 @@ Content-Type: application/json
 
 `timestamp` is optional. When it is omitted, the server stores the current time.
 
+The bearer token must have been issued by the auth server for the same `clientId` in the JSON body.
+
 ## Tests
 
 ```bash
 cd ~/Desktop/clippy
-mvn -pl server test
+mvn -pl server -am test
 ```
 
 Integration tests use Testcontainers PostgreSQL and require Docker.

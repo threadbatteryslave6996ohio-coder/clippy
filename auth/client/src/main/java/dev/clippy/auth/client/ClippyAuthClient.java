@@ -1,0 +1,55 @@
+package dev.clippy.auth.client;
+
+import org.springframework.http.HttpStatusCode;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+
+public final class ClippyAuthClient {
+    private final RestClient restClient;
+
+    public ClippyAuthClient(String baseUrl) {
+        this(RestClient.builder().baseUrl(baseUrl).build());
+    }
+
+    public ClippyAuthClient(RestClient restClient) {
+        this.restClient = restClient;
+    }
+
+    public LoginResponse login(String clientId, String secret) {
+        try {
+            return restClient.post()
+                    .uri("/login")
+                    .body(new LoginRequest(clientId, secret))
+                    .retrieve()
+                    .onStatus(HttpStatusCode::isError, (request, response) -> {
+                        throw new AuthClientException("Auth server rejected login with HTTP " + response.getStatusCode().value());
+                    })
+                    .body(LoginResponse.class);
+        } catch (RestClientException exception) {
+            throw new AuthClientException("Cannot login with auth server.", exception);
+        }
+    }
+
+    public boolean isTokenValidForClient(String clientId, String token) {
+        try {
+            CheckTokenResponse response = restClient.post()
+                    .uri("/tokens/check")
+                    .body(new CheckTokenRequest(clientId, token))
+                    .retrieve()
+                    .onStatus(HttpStatusCode::isError, (request, serverResponse) -> {
+                        throw new AuthClientException("Auth server rejected token check with HTTP " + serverResponse.getStatusCode().value());
+                    })
+                    .body(CheckTokenResponse.class);
+
+            return response != null && response.valid() && clientId.equals(response.clientId());
+        } catch (RestClientException exception) {
+            throw new AuthClientException("Cannot check token with auth server.", exception);
+        }
+    }
+
+    private record LoginRequest(String clientId, String secret) {
+    }
+
+    private record CheckTokenRequest(String clientId, String token) {
+    }
+}

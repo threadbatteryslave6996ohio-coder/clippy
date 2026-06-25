@@ -33,21 +33,24 @@ public final class ClipboardClientApp {
     private final HttpClient httpClient;
     private final URI endpoint;
     private final String clientId;
+    private final String clientToken;
     private String lastSentContent;
 
-    private ClipboardClientApp(Clipboard clipboard, URI endpoint, String clientId) {
+    private ClipboardClientApp(Clipboard clipboard, URI endpoint, String clientId, String clientToken) {
         this.clipboard = clipboard;
         this.endpoint = endpoint;
         this.clientId = clientId;
+        this.clientToken = clientToken;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
     }
 
-    public static void main(String[] args) {
-        Env env = ClientEnvs.fromSystem();
+    public static void main(String[] args) throws IOException {
+        Env env = ClientEnvs.load();
         URI endpoint = clipboardEndpoint(env.get(ClientEnvs.REMOTE_SERVER_URL));
         String clientId = env.has(ClientEnvs.CLIENT_ID) ? env.get(ClientEnvs.CLIENT_ID) : defaultClientId();
+        String clientToken = env.get(ClientEnvs.CLIENT_TOKEN);
         long pollIntervalMs = env.has(ClientEnvs.CLIPBOARD_POLL_INTERVAL_MS)
                 ? validatePollIntervalMs(env.get(ClientEnvs.CLIPBOARD_POLL_INTERVAL_MS))
                 : 1L;
@@ -59,7 +62,7 @@ public final class ClipboardClientApp {
             throw new IllegalStateException("No graphical clipboard is available in this environment.", exception);
         }
 
-        ClipboardClientApp app = new ClipboardClientApp(clipboard, endpoint, clientId);
+        ClipboardClientApp app = new ClipboardClientApp(clipboard, endpoint, clientId, clientToken);
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> shutdown(scheduler)));
 
@@ -114,6 +117,7 @@ public final class ClipboardClientApp {
         HttpRequest request = HttpRequest.newBuilder(endpoint)
                 .timeout(Duration.ofSeconds(10))
                 .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + clientToken)
                 .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
                 .build();
 

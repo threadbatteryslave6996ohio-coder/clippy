@@ -1,3 +1,7 @@
+/home/kamina_goat/Desktop/clippy/server/src/main/java/dev/clippy/server/AuthClientConfiguration.java
+/home/kamina_goat/Desktop/clippy/server/src/main/java/dev/clippy/server/AuthServerProperties.java
+/home/kamina_goat/Desktop/clippy/server/src/main/java/dev/clippy/server/AuthServerTokenVerifier.java
+/home/kamina_goat/Desktop/clippy/server/src/main/java/dev/clippy/server/AuthTokenVerifier.java
 /home/kamina_goat/Desktop/clippy/server/src/main/java/dev/clippy/server/ClipboardEntry.java
 /home/kamina_goat/Desktop/clippy/server/src/main/java/dev/clippy/server/ClipboardEntryController.java
 /home/kamina_goat/Desktop/clippy/server/src/main/java/dev/clippy/server/ClipboardEntryRepository.java

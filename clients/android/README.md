@@ -15,12 +15,28 @@ Android does not allow a normal third-party app to silently monitor clipboard ch
 
 Open `clients/android` in Android Studio and run the `app` configuration.
 
-Start the server from the repository root before sending clipboard entries:
+Start PostgreSQL, the auth server, and the app server from the repository root before sending clipboard entries:
 
 ```bash
 docker compose up -d postgres
-mvn -pl server spring-boot:run
+mvn -pl auth/server spring-boot:run
+mvn -pl server -am package
+java -jar server/target/clippy-server-0.1.0-SNAPSHOT.jar
 ```
+
+Create a client identity and login with the auth server:
+
+```bash
+curl -i http://localhost:8081/identities \
+  -H 'Content-Type: application/json' \
+  -d '{"clientId":"android-pixel-8","secret":"change-me-please"}'
+
+curl -s http://localhost:8081/login \
+  -H 'Content-Type: application/json' \
+  -d '{"clientId":"android-pixel-8","secret":"change-me-please"}'
+```
+
+Enter the returned token in the app's Client Token field.
 
 The app allows cleartext HTTP so it can talk to a local development server:
 
@@ -39,6 +55,12 @@ http://10.0.2.2:8080
 ## Server contract
 
 The Android app sends the same payload as the mac client:
+
+```http
+POST /clipboard
+Authorization: Bearer <client-token>
+Content-Type: application/json
+```
 
 ```json
 {

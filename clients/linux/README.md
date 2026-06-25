@@ -9,7 +9,7 @@ The client is an explicit foreground process. It reads the local text clipboard,
 - Ubuntu GNOME on ARM or x86_64
 - JDK 17+ with `javac` available on `PATH`
 - Maven 3.9+
-- A running Clippy server
+- A running Clippy auth server and app server
 - `wl-clipboard` for GNOME Wayland, or `xclip`/`xsel` for X11
 
 Install the recommended Ubuntu packages:
@@ -25,14 +25,27 @@ From the repository root:
 ```bash
 export REMOTE_SERVER_URL=http://localhost:8080
 export CLIENT_ID=ubuntu-gnome
+export CLIENT_TOKEN=token-from-auth-login
 export CLIPBOARD_POLL_INTERVAL_MS=1000
 mvn -pl clients/linux package
 java -jar clients/linux/target/clippy-linux-client-0.1.0-SNAPSHOT.jar
 ```
 
+The client also reads configuration from `.env` in the repository root:
+
+```dotenv
+REMOTE_SERVER_URL=http://localhost:8080
+CLIENT_ID=ubuntu-gnome
+CLIENT_TOKEN=token-from-auth-login
+CLIPBOARD_POLL_INTERVAL_MS=1000
+CLIPBOARD_BACKEND=wl-paste
+```
+
+Shell environment variables override values from `.env` when both are set.
+
 `REMOTE_SERVER_URL` is required. It may be either the server base URL, such as `http://localhost:8080`, or the full endpoint, such as `http://localhost:8080/clipboard`.
 
-`CLIENT_ID` is optional and defaults to the machine hostname. `CLIPBOARD_POLL_INTERVAL_MS` is optional and defaults to `1000`.
+`CLIENT_TOKEN` is required and must come from the auth server `/login` endpoint. `CLIENT_ID` is optional and defaults to the machine hostname. `CLIPBOARD_POLL_INTERVAL_MS` is optional and defaults to `1000`.
 
 ## Clipboard Backend
 
@@ -53,6 +66,12 @@ Supported values are `wl-paste`, `wayland`, `xclip`, `xsel`, `awt`, and `java`.
 ## Server Contract
 
 The client sends:
+
+```http
+POST /clipboard
+Authorization: Bearer <client-token>
+Content-Type: application/json
+```
 
 ```json
 {

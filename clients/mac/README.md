@@ -8,7 +8,7 @@ The client is an explicit foreground process. It reads the local system text cli
 
 - JDK 17+
 - Maven 3.9+
-- A running Clippy server
+- A running Clippy auth server and app server
 
 ## Start the Server
 
@@ -16,7 +16,9 @@ From the repository root:
 
 ```bash
 docker compose up -d postgres
-mvn -pl server spring-boot:run
+mvn -pl auth/server spring-boot:run
+mvn -pl server -am package
+java -jar server/target/clippy-server-0.1.0-SNAPSHOT.jar
 ```
 
 ## Run the Client
@@ -26,20 +28,38 @@ Run the client from a logged-in graphical session so Java can access the system 
 ```bash
 export REMOTE_SERVER_URL=http://localhost:8080
 export CLIENT_ID=my-mac
+export CLIENT_TOKEN=token-from-auth-login
 export CLIPBOARD_POLL_INTERVAL_MS=1000
 mvn -pl clients/mac package
 java -jar clients/mac/target/clippy-client-0.1.0-SNAPSHOT.jar
 ```
 
+The client also reads configuration from `.env` in the repository root:
+
+```dotenv
+REMOTE_SERVER_URL=http://localhost:8080
+CLIENT_ID=my-mac
+CLIENT_TOKEN=token-from-auth-login
+CLIPBOARD_POLL_INTERVAL_MS=1000
+```
+
+Shell environment variables override values from `.env` when both are set.
+
 `REMOTE_SERVER_URL` is required. It may be either the server base URL, such as `http://localhost:8080`, or the full endpoint, such as `http://localhost:8080/clipboard`.
 
-`CLIENT_ID` is optional and defaults to the machine hostname. `CLIPBOARD_POLL_INTERVAL_MS` is optional and defaults to `1`.
+`CLIENT_TOKEN` is required and must come from the auth server `/login` endpoint. `CLIENT_ID` is optional and defaults to the machine hostname. `CLIPBOARD_POLL_INTERVAL_MS` is optional and defaults to `1`.
 
 If the client cannot save a clipboard change to the remote server, it appends the same JSON payload to `clippy-offline-clipboard.json` in the directory where the client was launched. It also prints the remote server failure and the local file write to the terminal.
 
 ## Server Contract
 
 The client sends:
+
+```http
+POST /clipboard
+Authorization: Bearer <client-token>
+Content-Type: application/json
+```
 
 ```json
 {

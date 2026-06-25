@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -94,6 +95,7 @@ private fun ClippyApp(sharedText: String?) {
 
     var serverUrl by rememberSaveable { mutableStateOf(settings.serverUrl) }
     var clientId by rememberSaveable { mutableStateOf(settings.clientId) }
+    var clientToken by rememberSaveable { mutableStateOf(settings.clientToken) }
     var clipboardText by rememberSaveable { mutableStateOf(sharedText.orEmpty()) }
     var autoSync by rememberSaveable { mutableStateOf(settings.autoSync) }
     var status by rememberSaveable {
@@ -118,6 +120,7 @@ private fun ClippyApp(sharedText: String?) {
     fun saveSettings() {
         settings.serverUrl = serverUrl.trim()
         settings.clientId = clientId.trim()
+        settings.clientToken = clientToken.trim()
         settings.autoSync = autoSync
         status = "Settings saved"
     }
@@ -135,6 +138,7 @@ private fun ClippyApp(sharedText: String?) {
     fun sendCurrent(content: String = clipboardText) {
         val normalizedServerUrl = serverUrl.trim()
         val normalizedClientId = clientId.trim()
+        val normalizedClientToken = clientToken.trim()
 
         if (normalizedServerUrl.isBlank()) {
             status = "Enter a server URL"
@@ -142,6 +146,10 @@ private fun ClippyApp(sharedText: String?) {
         }
         if (normalizedClientId.isBlank()) {
             status = "Enter a client ID"
+            return
+        }
+        if (normalizedClientToken.isBlank()) {
+            status = "Enter a client token"
             return
         }
         if (content.isBlank()) {
@@ -152,18 +160,19 @@ private fun ClippyApp(sharedText: String?) {
         sending = true
         status = "Sending..."
         scope.launch {
-            val result = ClippyApi.send(normalizedServerUrl, normalizedClientId, content)
+            val result = ClippyApi.send(normalizedServerUrl, normalizedClientId, normalizedClientToken, content)
             sending = false
             status = result.message
             if (result.success) {
                 lastSent = content
                 settings.serverUrl = normalizedServerUrl
                 settings.clientId = normalizedClientId
+                settings.clientToken = normalizedClientToken
             }
         }
     }
 
-    LaunchedEffect(autoSync, serverUrl, clientId) {
+    LaunchedEffect(autoSync, serverUrl, clientId, clientToken) {
         settings.autoSync = autoSync
         while (autoSync) {
             val text = context.readClipboardText()
@@ -224,6 +233,15 @@ private fun ClippyApp(sharedText: String?) {
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         label = { Text("Client ID") },
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None)
+                    )
+                    OutlinedTextField(
+                        value = clientToken,
+                        onValueChange = { clientToken = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("Client Token") },
+                        visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None)
                     )
                     Button(
@@ -348,13 +366,17 @@ private class ClippySettings(context: Context) {
         get() = preferences.getString("clientId", defaultClientId()) ?: defaultClientId()
         set(value) = preferences.edit().putString("clientId", value).apply()
 
+    var clientToken: String
+        get() = preferences.getString("clientToken", "") ?: ""
+        set(value) = preferences.edit().putString("clientToken", value).apply()
+
     var autoSync: Boolean
         get() = preferences.getBoolean("autoSync", false)
         set(value) = preferences.edit().putBoolean("autoSync", value).apply()
 }
 
 private object ClippyApi {
-    suspend fun send(serverUrl: String, clientId: String, content: String): SendResult =
+    suspend fun send(serverUrl: String, clientId: String, clientToken: String, content: String): SendResult =
         withContext(Dispatchers.IO) {
             try {
                 val endpoint = clipboardEndpoint(serverUrl)
@@ -370,6 +392,7 @@ private object ClippyApi {
                     readTimeout = 10_000
                     doOutput = true
                     setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                    setRequestProperty("Authorization", "Bearer $clientToken")
                 }
 
                 connection.outputStream.use { output ->

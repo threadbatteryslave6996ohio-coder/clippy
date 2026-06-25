@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
@@ -21,6 +22,7 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
 
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -45,6 +47,9 @@ class ClipboardEntryHttpIntegrationTest {
     @Autowired
     private ClipboardEntryRepository repository;
 
+    @MockBean
+    private AuthTokenVerifier authTokenVerifier;
+
     @BeforeEach
     void clearDatabase() {
         repository.deleteAll();
@@ -61,8 +66,11 @@ class ClipboardEntryHttpIntegrationTest {
                 }
                 """.formatted(timestamp);
 
+        when(authTokenVerifier.isTokenValidForClient("android-pixel-8", "valid-token")).thenReturn(true);
+
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth("valid-token");
 
         ResponseEntity<ClipboardEntryResponse> response = restTemplate.postForEntity(
                 "http://localhost:%d/clipboard".formatted(port),
@@ -84,5 +92,27 @@ class ClipboardEntryHttpIntegrationTest {
         assertThat(saved.getClientId()).isEqualTo("android-pixel-8");
         assertThat(saved.getContent()).isEqualTo("clipboard text");
         assertThat(saved.getTimestamp()).isEqualTo(timestamp);
+    }
+
+    @Test
+    void rejectsClipboardEntryWithoutBearerToken() {
+        String json = """
+                {
+                  "clientId": "android-pixel-8",
+                  "content": "clipboard text"
+                }
+                """;
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        ResponseEntity<String> response = restTemplate.postForEntity(
+                "http://localhost:%d/clipboard".formatted(port),
+                new HttpEntity<>(json, headers),
+                String.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(repository.findAll()).isEmpty();
     }
 }

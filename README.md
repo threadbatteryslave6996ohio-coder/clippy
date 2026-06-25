@@ -4,6 +4,8 @@ Clippy records text clipboard changes from desktop and Android clients in a Spri
 
 Client-specific docs:
 
+- Auth server: [auth/server/README.md](auth/server/README.md)
+- Auth client Java module: [auth/client/README.md](auth/client/README.md)
 - macOS: [clients/mac/README.md](clients/mac/README.md)
 - Linux GNOME: [clients/linux/README.md](clients/linux/README.md)
 - Dummy: [clients/dummy/README.md](clients/dummy/README.md)
@@ -41,22 +43,45 @@ cd ~/Desktop/clippy
 docker compose up -d postgres
 ```
 
-Run the Spring Boot server:
+Run the auth server in one terminal:
 
 ```bash
 cd ~/Desktop/clippy
-mvn -pl server spring-boot:run
+mvn -pl auth/server spring-boot:run
 ```
 
-The server listens on `http://localhost:8080` by default and writes to the Compose database with these defaults:
+Build and run the app server in another terminal:
+
+```bash
+cd ~/Desktop/clippy
+mvn -pl server -am package
+java -jar server/target/clippy-server-0.1.0-SNAPSHOT.jar
+```
+
+The auth server listens on `http://localhost:8081` and the app server listens on `http://localhost:8080` by default. Both write to the Compose database with these defaults:
 
 ```text
 SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/clippy
 SPRING_DATASOURCE_USERNAME=clippy
 SPRING_DATASOURCE_PASSWORD=clippy
+CLIPPY_AUTH_BASE_URL=http://localhost:8081
 ```
 
-Override `SERVER_PORT` or the `SPRING_DATASOURCE_*` environment variables if you need different local settings.
+Override `SERVER_PORT`, `AUTH_SERVER_PORT`, `CLIPPY_AUTH_BASE_URL`, or the datasource environment variables if you need different local settings.
+
+Create a client identity and login before running a client:
+
+```bash
+curl -i http://localhost:8081/identities \
+  -H 'Content-Type: application/json' \
+  -d '{"clientId":"dummy","secret":"change-me-please"}'
+
+curl -s http://localhost:8081/login \
+  -H 'Content-Type: application/json' \
+  -d '{"clientId":"dummy","secret":"change-me-please"}'
+```
+
+Put the returned token in `CLIENT_TOKEN`.
 
 ## Run the macOS Client
 
@@ -66,12 +91,14 @@ Run the macOS client from a logged-in graphical session so Java can read the sys
 cd ~/Desktop/clippy
 export REMOTE_SERVER_URL=http://localhost:8080
 export CLIENT_ID=my-mac
+export CLIENT_TOKEN=token-from-auth-login
 export CLIPBOARD_POLL_INTERVAL_MS=1000
 mvn -pl clients/mac package
 java -jar clients/mac/target/clippy-client-0.1.0-SNAPSHOT.jar
 ```
 
-`REMOTE_SERVER_URL` can be the server base URL or the full `/clipboard` endpoint. `CLIENT_ID` defaults to the machine hostname. `CLIPBOARD_POLL_INTERVAL_MS` defaults to `1`.
+`REMOTE_SERVER_URL` can be the server base URL or the full `/clipboard` endpoint. `CLIENT_TOKEN` is required. `CLIENT_ID` defaults to the machine hostname. `CLIPBOARD_POLL_INTERVAL_MS` defaults to `1`.
+Java desktop clients also read these values from `.env` in the repository root, with shell environment variables taking precedence.
 
 See [clients/mac/README.md](clients/mac/README.md) for the macOS-client-specific notes.
 
@@ -89,6 +116,7 @@ Start the Clippy server first, then run the Linux client from a logged-in graphi
 cd ~/Desktop/clippy
 export REMOTE_SERVER_URL=http://localhost:8080
 export CLIENT_ID=ubuntu-gnome
+export CLIENT_TOKEN=token-from-auth-login
 export CLIPBOARD_POLL_INTERVAL_MS=1000
 mvn -pl clients/linux package
 java -jar clients/linux/target/clippy-linux-client-0.1.0-SNAPSHOT.jar
@@ -96,7 +124,8 @@ java -jar clients/linux/target/clippy-linux-client-0.1.0-SNAPSHOT.jar
 
 `REMOTE_SERVER_URL` is required. It can be the server base URL, such as `http://localhost:8080`, or the full endpoint, such as `http://localhost:8080/clipboard`.
 
-`CLIENT_ID` is optional and defaults to the machine hostname. `CLIPBOARD_POLL_INTERVAL_MS` is optional and defaults to `1000`.
+`CLIENT_TOKEN` is required. `CLIENT_ID` is optional and defaults to the machine hostname. `CLIPBOARD_POLL_INTERVAL_MS` is optional and defaults to `1000`.
+Java desktop clients also read these values from `.env` in the repository root, with shell environment variables taking precedence.
 
 The client polls the local text clipboard and sends changed text to the server. It uses `wl-paste` on GNOME Wayland, `xclip` or `xsel` on X11, and Java AWT as a fallback.
 
@@ -125,6 +154,7 @@ JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 mvn -pl clients/dummy package
 ```
 
 The dummy client reads `REMOTE_SERVER_URL` and `CLIENT_ID` from `.env` in the repository root. You can also pipe commands on stdin. Each non-empty line is sent as one command.
+`CLIENT_TOKEN` is required and should be the token returned by the auth server `/login` endpoint.
 
 See [clients/dummy/README.md](clients/dummy/README.md) for the dummy-client-specific notes.
 
@@ -153,6 +183,7 @@ Clients send clipboard entries to:
 ```http
 POST /clipboard
 Content-Type: application/json
+Authorization: Bearer <client-token>
 ```
 
 ```json
