@@ -1,21 +1,106 @@
 # Clippy Auth Server
 
-Spring Boot service that owns client identities and login tokens for Clippy clients.
+Spring Boot service that owns Clippy client identities and issues login tokens.
 
-The clipboard app server does not store client secrets or tokens. It calls this auth server's `/tokens/check` endpoint to verify that a submitted bearer token belongs to the request `clientId`.
+The clipboard app server does not store client secrets or token records. It receives a bearer token on clipboard writes and calls this auth server's `/tokens/check` endpoint to verify that the token belongs to the request `clientId`.
+
+## Responsibilities
+
+- Create one identity per Clippy client.
+- Store client secrets as salted PBKDF2 hashes.
+- Issue random login tokens for valid client credentials.
+- Store token hashes, not raw token values.
+- Validate a token against a `clientId` for the app server.
+
+## Requirements
+
+- JDK 17+ with `javac` available on `PATH`
+- Maven 3.9+
+- Docker and Docker Compose for local PostgreSQL
+
+Verify the Java install before running Maven:
+
+```bash
+java -version
+javac -version
+mvn -version
+```
 
 ## Start Locally
 
 From the repository root:
 
 ```bash
-docker compose up -d postgres
+cd ~/Desktop/clippy
+docker compose -f auth/server/docker-compose.yml up -d auth-postgres
 mvn -pl auth/server spring-boot:run
 ```
 
-The auth server listens on `http://localhost:8081` by default and uses the same local PostgreSQL database defaults as the app server.
+The auth server listens on `http://localhost:8081` by default. Its local PostgreSQL container exposes database `auth` on host port `5433`.
 
-## Create an Identity
+To build a runnable jar instead:
+
+```bash
+cd ~/Desktop/clippy
+mvn -pl auth/server -am package
+java -jar auth/server/target/clippy-auth-server-0.1.0-SNAPSHOT.jar
+```
+
+## Configuration
+
+The default local configuration matches `docker-compose.yml`.
+
+| Environment variable | Default | Purpose |
+| --- | --- | --- |
+| `AUTH_SERVER_PORT` | `8081` | HTTP port for the auth server. |
+| `AUTH_DATASOURCE_URL` | `jdbc:postgresql://localhost:5433/auth` | PostgreSQL JDBC URL. |
+| `AUTH_DATASOURCE_USERNAME` | `auth` | Database username. |
+| `AUTH_DATASOURCE_PASSWORD` | `auth` | Database password. |
+| `AUTH_LOGGING_FILE_NAME` | `logs/clippy-auth-server.log` | File path for server logs. |
+
+The service uses Hibernate `ddl-auto: update`, so it creates or updates the local schema on startup. The persistent tables are:
+
+- `client_identities`
+- `client_tokens`
+
+## API
+
+All endpoints accept and return JSON.
+
+### Create an Identity
+
+```http
+POST /identities
+Content-Type: application/json
+```
+
+```json
+{
+  "clientId": "dummy",
+  "secret": "change-me-please"
+}
+```
+
+Response:
+
+```http
+201 Created
+```
+
+```json
+{
+  "clientId": "dummy",
+  "createdAt": "2026-06-25T12:00:00Z"
+}
+```
+
+Constraints:
+
+- `clientId` is required and must be at most 128 characters.
+- `secret` is required and must be 8 to 256 characters.
+- Duplicate `clientId` values return `409 Conflict`.
+
+Example:
 
 ```bash
 curl -i http://localhost:8081/identities \
@@ -23,17 +108,21 @@ curl -i http://localhost:8081/identities \
   -d '{"clientId":"dummy","secret":"change-me-please"}'
 ```
 
-`clientId` is the identity clients put in clipboard requests. `secret` is used only for login and is stored hashed.
+### Login
 
-## Login
-
-```bash
-curl -s http://localhost:8081/login \
-  -H 'Content-Type: application/json' \
-  -d '{"clientId":"dummy","secret":"change-me-please"}'
+```http
+POST /login
+Content-Type: application/json
 ```
 
-The response contains a token:
+```json
+{
+  "clientId": "dummy",
+  "secret": "change-me-please"
+}
+```
+
+Response:
 
 ```json
 {
@@ -42,16 +131,32 @@ The response contains a token:
 }
 ```
 
-Use that token as `CLIENT_TOKEN` in client configuration.
+Use the returned token as `CLIENT_TOKEN` in Clippy client configuration. The raw token is shown only in this response. The database stores a SHA-256 hash of the token.
 
-## Check a Token
+Invalid credentials return `401 Unauthorized`.
 
-The app server calls this endpoint:
+Example:
 
 ```bash
-curl -s http://localhost:8081/tokens/check \
+curl -s http://localhost:8081/login \
   -H 'Content-Type: application/json' \
-  -d '{"clientId":"dummy","token":"generated-token"}'
+  -d '{"clientId":"dummy","secret":"change-me-please"}'
+```
+
+### Check a Token
+
+This endpoint is primarily for the app server.
+
+```http
+POST /tokens/check
+Content-Type: application/json
+```
+
+```json
+{
+  "clientId": "dummy",
+  "token": "generated-token"
+}
 ```
 
 Response:
@@ -63,11 +168,46 @@ Response:
 }
 ```
 
-## Configuration
+The endpoint returns `valid: false` when the token is unknown, when the identity is inactive, or when the token belongs to a different `clientId`.
+
+Example:
+
+```bash
+curl -s http://localhost:8081/tokens/check \
+  -H 'Content-Type: application/json' \
+  -d '{"clientId":"dummy","token":"generated-token"}'
+```
+
+## App Server Integration
+
+Run this auth server before starting the main app server. The app server defaults to this auth base URL:
 
 ```text
-AUTH_SERVER_PORT=8081
-AUTH_DATASOURCE_URL=jdbc:postgresql://localhost:5432/clippy
-AUTH_DATASOURCE_USERNAME=clippy
-AUTH_DATASOURCE_PASSWORD=clippy
+CLIPPY_AUTH_BASE_URL=http://localhost:8081
 ```
+
+Clipboard clients send the token from `/login` to the app server as a bearer token:
+
+```http
+Authorization: Bearer <client-token>
+```
+
+The app server passes the clipboard request `clientId` and bearer token to `/tokens/check`. The token must have been issued for the same `clientId`.
+
+## Operational Notes
+
+- There is no token expiry or revocation endpoint yet. Issuing a new token does not invalidate older tokens.
+- Identity records have an `active` flag in the database, but there is no HTTP endpoint for changing it yet.
+- Secrets are never returned by the API.
+- Token values cannot be recovered from the database because only token hashes are stored.
+
+## Tests
+
+Run the auth server tests from the repository root:
+
+```bash
+cd ~/Desktop/clippy
+mvn -pl auth/server -am test
+```
+
+Tests that use PostgreSQL require a working Docker daemon when Testcontainers is involved.

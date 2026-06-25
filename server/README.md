@@ -28,11 +28,12 @@ export PATH="$JAVA_HOME/bin:$PATH"
 
 ## Start Locally
 
-From the repository root at `~/Desktop/clippy`, start PostgreSQL:
+From the repository root at `~/Desktop/clippy`, start PostgreSQL for the app server and auth server:
 
 ```bash
 cd ~/Desktop/clippy
-docker compose up -d postgres
+docker compose -f server/docker-compose.yml up -d postgres
+docker compose -f auth/server/docker-compose.yml up -d auth-postgres
 ```
 
 Run the auth server from the repository root in one terminal:
@@ -62,7 +63,7 @@ The app server listens on `http://localhost:8080` by default. The auth server li
 
 ## Configuration
 
-The default local configuration matches `docker-compose.yml`:
+The default local configuration matches `server/docker-compose.yml`:
 
 ```text
 SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/clippy

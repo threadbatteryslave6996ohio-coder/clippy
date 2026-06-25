@@ -36,11 +36,12 @@ export PATH="$JAVA_HOME/bin:$PATH"
 
 ## Start the Server
 
-Start PostgreSQL:
+Start PostgreSQL for the auth server and app server:
 
 ```bash
 cd ~/Desktop/clippy
-docker compose up -d postgres
+docker compose -f auth/server/docker-compose.yml up -d auth-postgres
+docker compose -f server/docker-compose.yml up -d postgres
 ```
 
 Run the auth server in one terminal:
@@ -58,9 +59,12 @@ mvn -pl server -am package
 java -jar server/target/clippy-server-0.1.0-SNAPSHOT.jar
 ```
 
-The auth server listens on `http://localhost:8081` and the app server listens on `http://localhost:8080` by default. Both write to the Compose database with these defaults:
+The auth server listens on `http://localhost:8081` and the app server listens on `http://localhost:8080` by default. The auth server writes to its own `auth` database on port `5433`; the app server writes to the `clippy` database on port `5432`.
 
 ```text
+AUTH_DATASOURCE_URL=jdbc:postgresql://localhost:5433/auth
+AUTH_DATASOURCE_USERNAME=auth
+AUTH_DATASOURCE_PASSWORD=auth
 SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/clippy
 SPRING_DATASOURCE_USERNAME=clippy
 SPRING_DATASOURCE_PASSWORD=clippy

@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: ${AUTH_DATASOURCE_URL:${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/clippy}}
-    username: ${AUTH_DATASOURCE_USERNAME:${SPRING_DATASOURCE_USERNAME:clippy}}
-    password: ${AUTH_DATASOURCE_PASSWORD:${SPRING_DATASOURCE_PASSWORD:clippy}}
+    url: ${AUTH_DATASOURCE_URL:jdbc:postgresql://localhost:5433/auth}
+    username: ${AUTH_DATASOURCE_USERNAME:auth}
+    password: ${AUTH_DATASOURCE_PASSWORD:auth}
   jpa:
     hibernate:
       ddl-auto: update
