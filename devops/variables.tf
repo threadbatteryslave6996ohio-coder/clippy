@@ -12,7 +12,7 @@ variable "name_prefix" {
 variable "location" {
   description = "Azure region for the PostgreSQL Flexible Server."
   type        = string
-  default     = "eastus"
+  default     = "centralus"
 }
 
 variable "postgres_admin_username" {
@@ -102,9 +102,9 @@ variable "vm_admin_ssh_public_key" {
 }
 
 variable "vm_size" {
-  description = "Azure VM size for the Clippy server."
+  description = "Azure VM size for the Clippy server. Standard_B2pts_v2 matches Azure's current 12-month free Linux VM allowance where eligible."
   type        = string
-  default     = "Standard_B1s"
+  default     = "Standard_B2pts_v2"
 }
 
 variable "vm_vnet_address_space" {

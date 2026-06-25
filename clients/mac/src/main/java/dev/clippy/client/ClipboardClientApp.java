@@ -12,6 +12,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
@@ -24,13 +27,13 @@ public final class ClipboardClientApp {
     private static final String REMOTE_SERVER_URL = "REMOTE_SERVER_URL";
     private static final String CLIENT_ID = "CLIENT_ID";
     private static final String POLL_INTERVAL_MS = "CLIPBOARD_POLL_INTERVAL_MS";
+    private static final Path OFFLINE_LOG_PATH = Path.of("clippy-offline-clipboard.json");
 
     private final Clipboard clipboard;
     private final HttpClient httpClient;
     private final URI endpoint;
     private final String clientId;
     private String lastSentContent;
-    private boolean previousSendFailed;
 
     private ClipboardClientApp(Clipboard clipboard, URI endpoint, String clientId) {
         this.clipboard = clipboard;
@@ -64,22 +67,32 @@ public final class ClipboardClientApp {
     }
 
     private void pollAndSendIfChanged() {
+        String content;
         try {
-            String content = readClipboardText();
-            if (content == null || Objects.equals(content, lastSentContent)) {
-                return;
-            }
+            content = readClipboardText();
+        } catch (Exception exception) {
+            System.err.printf("Clipboard read failed: %s%n", exception.getMessage());
+            return;
+        }
 
-            int statusCode = send(content);
+        if (content == null || Objects.equals(content, lastSentContent)) {
+            return;
+        }
+
+        ClipboardPayload payload = new ClipboardPayload(clientId, content, Instant.now());
+        try {
+            int statusCode = send(payload);
             if (statusCode >= 200 && statusCode < 300) {
                 lastSentContent = content;
-                previousSendFailed = false;
                 System.out.printf("Sent clipboard change. chars=%d%n", content.length());
             } else {
-                logSendFailure("Server responded with HTTP " + statusCode);
+                logOffline(payload, "Server responded with HTTP " + statusCode);
             }
-        } catch (Exception exception) {
-            logSendFailure(exception.getMessage());
+        } catch (IOException exception) {
+            logOffline(payload, exception.getMessage());
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            logOffline(payload, "Interrupted while sending clipboard content.");
         }
     }
 
@@ -91,10 +104,10 @@ public final class ClipboardClientApp {
         return data instanceof String text ? text : null;
     }
 
-    private int send(String content) throws IOException, InterruptedException {
+    private int send(ClipboardPayload payload) throws IOException, InterruptedException {
         String json = """
                 {"clientId":"%s","content":"%s","timestamp":"%s"}"""
-                .formatted(jsonEscape(clientId), jsonEscape(content), Instant.now());
+                .formatted(jsonEscape(payload.clientId()), jsonEscape(payload.content()), payload.timestamp());
 
         HttpRequest request = HttpRequest.newBuilder(endpoint)
                 .timeout(Duration.ofSeconds(10))
@@ -105,11 +118,37 @@ public final class ClipboardClientApp {
         return httpClient.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();
     }
 
-    private void logSendFailure(String message) {
-        if (!previousSendFailed) {
-            System.err.printf("Clipboard send failed: %s%n", message);
-            previousSendFailed = true;
+    private void logOffline(ClipboardPayload payload, String message) {
+        String failureMessage = message == null || message.isBlank() ? "unknown error" : message;
+        System.err.printf("Cannot reach remote server: %s%n", failureMessage);
+        try {
+            appendOfflinePayload(payload);
+            lastSentContent = payload.content();
+            System.err.printf("Logged clipboard message to %s. chars=%d%n",
+                    OFFLINE_LOG_PATH.toAbsolutePath(), payload.content().length());
+        } catch (IOException exception) {
+            System.err.printf("Clipboard send failed and local JSON log failed: %s%n", exception.getMessage());
         }
+    }
+
+    private static void appendOfflinePayload(ClipboardPayload payload) throws IOException {
+        String entry = "  " + payload.toJson();
+        if (!Files.exists(OFFLINE_LOG_PATH) || Files.size(OFFLINE_LOG_PATH) == 0) {
+            Files.writeString(OFFLINE_LOG_PATH, "[\n" + entry + "\n]\n", StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            return;
+        }
+
+        String existing = Files.readString(OFFLINE_LOG_PATH, StandardCharsets.UTF_8);
+        int arrayEnd = existing.lastIndexOf(']');
+        if (arrayEnd < 0) {
+            throw new IOException("Offline JSON log is not a JSON array: " + OFFLINE_LOG_PATH.toAbsolutePath());
+        }
+
+        String beforeEnd = existing.substring(0, arrayEnd).stripTrailing();
+        String separator = beforeEnd.endsWith("[") ? "\n" : ",\n";
+        Files.writeString(OFFLINE_LOG_PATH, beforeEnd + separator + entry + "\n]\n", StandardCharsets.UTF_8,
+                StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
     }
 
     private static URI clipboardEndpoint(String remoteUrl) {
@@ -181,6 +220,14 @@ public final class ClipboardClientApp {
             }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private record ClipboardPayload(String clientId, String content, Instant timestamp) {
+        private String toJson() {
+            return """
+                    {"clientId":"%s","content":"%s","timestamp":"%s"}"""
+                    .formatted(jsonEscape(clientId), jsonEscape(content), timestamp);
         }
     }
 }

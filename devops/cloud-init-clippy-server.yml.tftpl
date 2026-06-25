@@ -23,21 +23,37 @@ write_files:
       APP_DIR="/opt/clippy/repo"
       JAR_PATH="/opt/clippy/clippy-server.jar"
       LOG_DIR="/var/log/clippy"
+      REPO_URL="$(cat /etc/clippy/repo-url)"
+      REPO_REF="$(cat /etc/clippy/repo-ref)"
 
       install -d -o clippy -g clippy /opt/clippy "$LOG_DIR"
 
       if [ ! -d "$APP_DIR/.git" ]; then
-        git clone ${repo_url} "$APP_DIR"
+        git clone "$REPO_URL" "$APP_DIR"
       fi
 
       cd "$APP_DIR"
       git fetch --all --tags
-      git checkout ${repo_ref}
-      git pull --ff-only || true
+      git checkout "$REPO_REF"
+      if git symbolic-ref -q HEAD >/dev/null; then
+        git pull --ff-only
+      fi
 
       mvn -pl server -am package -DskipTests
       cp server/target/clippy-server-*.jar "$JAR_PATH"
       chown -R clippy:clippy /opt/clippy "$LOG_DIR"
+
+  - path: /etc/clippy/repo-url
+    owner: root:clippy
+    permissions: "0640"
+    encoding: b64
+    content: ${repo_url_b64}
+
+  - path: /etc/clippy/repo-ref
+    owner: root:clippy
+    permissions: "0640"
+    encoding: b64
+    content: ${repo_ref_b64}
 
   - path: /etc/clippy/server.env
     owner: root:clippy

@@ -1,8 +1,11 @@
 # Clippy Azure Infrastructure
 
-Terraform for an Azure Database for PostgreSQL Flexible Server sized for Azure's free-account PostgreSQL allowance: Burstable B1MS with 32 GB storage.
+Terraform for Azure infrastructure sized for Azure's 12-month free-account allowances where eligible:
 
-Azure free eligibility depends on your subscription offer, region, usage, and current Microsoft terms. Check the Azure portal cost estimate before applying.
+- Azure Database for PostgreSQL Flexible Server: Burstable B1MS with 32 GB storage.
+- Optional Azure Linux VM: `Standard_B2pts_v2` with Ubuntu 22.04 LTS Arm64.
+
+Azure free eligibility depends on your subscription offer, region, capacity, usage, and current Microsoft terms. Check the Azure portal cost estimate before applying. VM disks, static public IPs, network egress, and usage beyond included allowances may still create charges.
 
 The same Terraform can optionally create an Azure Linux VM as an EC2-style server host. The VM clones this repo, builds `server`, runs it with systemd, opens the configured server port, and persists logs under `/var/log/clippy`.
 
@@ -40,8 +43,13 @@ Then deploy:
 ```bash
 az login
 terraform init
-terraform apply
+terraform plan -parallelism=1
+terraform apply -parallelism=1
 ```
+
+The serialized `-parallelism=1` run avoids Azure read-after-create/provider
+consistency issues that can leave partially-created resources outside
+Terraform state.
 
 Use the outputs to configure the Spring Boot server:
 

@@ -35,6 +35,8 @@ java -jar clients/mac/target/clippy-client-0.1.0-SNAPSHOT.jar
 
 `CLIENT_ID` is optional and defaults to the machine hostname. `CLIPBOARD_POLL_INTERVAL_MS` is optional and defaults to `1`.
 
+If the client cannot save a clipboard change to the remote server, it appends the same JSON payload to `clippy-offline-clipboard.json` in the directory where the client was launched. It also prints the remote server failure and the local file write to the terminal.
+
 ## Server Contract
 
 The client sends:
