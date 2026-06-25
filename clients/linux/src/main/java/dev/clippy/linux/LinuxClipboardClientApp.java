@@ -1,5 +1,8 @@
 package dev.clippy.linux;
 
+import dev.clippy.clients.envs.ClientEnvs;
+import dev.clippy.utils.envmanager.Env;
+
 import java.awt.HeadlessException;
 import java.awt.Toolkit;
 import java.awt.datatransfer.Clipboard;
@@ -28,10 +31,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public final class LinuxClipboardClientApp {
-    private static final String REMOTE_SERVER_URL = "REMOTE_SERVER_URL";
-    private static final String CLIENT_ID = "CLIENT_ID";
-    private static final String POLL_INTERVAL_MS = "CLIPBOARD_POLL_INTERVAL_MS";
-    private static final String CLIPBOARD_BACKEND = "CLIPBOARD_BACKEND";
     private static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(2);
 
     private final ClipboardReader clipboardReader;
@@ -52,11 +51,13 @@ public final class LinuxClipboardClientApp {
     }
 
     public static void main(String[] args) {
-        String remoteUrl = requireEnv(REMOTE_SERVER_URL);
-        URI endpoint = clipboardEndpoint(remoteUrl);
-        String clientId = envOrDefault(CLIENT_ID, defaultClientId());
-        long pollIntervalMs = parsePollIntervalMs(envOrDefault(POLL_INTERVAL_MS, "1000"));
-        ClipboardReader clipboardReader = createClipboardReader();
+        Env env = ClientEnvs.fromSystem();
+        URI endpoint = clipboardEndpoint(env.get(ClientEnvs.REMOTE_SERVER_URL));
+        String clientId = env.has(ClientEnvs.CLIENT_ID) ? env.get(ClientEnvs.CLIENT_ID) : defaultClientId();
+        long pollIntervalMs = env.has(ClientEnvs.CLIPBOARD_POLL_INTERVAL_MS)
+                ? validatePollIntervalMs(env.get(ClientEnvs.CLIPBOARD_POLL_INTERVAL_MS))
+                : 1000L;
+        ClipboardReader clipboardReader = createClipboardReader(env);
 
         LinuxClipboardClientApp app = new LinuxClipboardClientApp(clipboardReader, endpoint, clientId);
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
@@ -126,15 +127,15 @@ public final class LinuxClipboardClientApp {
         }
     }
 
-    private static ClipboardReader createClipboardReader() {
-        String requestedBackend = System.getenv(CLIPBOARD_BACKEND);
-        if (requestedBackend != null && !requestedBackend.isBlank()) {
+    private static ClipboardReader createClipboardReader(Env env) {
+        if (env.has(ClientEnvs.CLIPBOARD_BACKEND)) {
+            String requestedBackend = env.get(ClientEnvs.CLIPBOARD_BACKEND);
             ClipboardReader reader = switch (requestedBackend.trim().toLowerCase()) {
                 case "wl-paste", "wayland" -> new CommandClipboardReader("wl-paste", List.of("wl-paste", "--no-newline", "--type", "text/plain"));
                 case "xclip" -> new CommandClipboardReader("xclip", List.of("xclip", "-selection", "clipboard", "-out", "-target", "UTF8_STRING"));
                 case "xsel" -> new CommandClipboardReader("xsel", List.of("xsel", "--clipboard", "--output"));
                 case "awt", "java" -> new AwtClipboardReader();
-                default -> throw new IllegalArgumentException("Unsupported " + CLIPBOARD_BACKEND + ": " + requestedBackend);
+                default -> throw new IllegalArgumentException("Unsupported " + ClientEnvs.CLIPBOARD_BACKEND.name() + ": " + requestedBackend);
             };
             if (!reader.isAvailable()) {
                 throw new IllegalStateException("Requested clipboard backend is not available: " + requestedBackend);
@@ -190,25 +191,11 @@ public final class LinuxClipboardClientApp {
         return URI.create(trimmed.replaceAll("/+$", "") + "/clipboard");
     }
 
-    private static String requireEnv(String name) {
-        String value = System.getenv(name);
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException("Missing required environment variable: " + name);
+    private static long validatePollIntervalMs(long value) {
+        if (value < 100) {
+            throw new IllegalArgumentException(ClientEnvs.CLIPBOARD_POLL_INTERVAL_MS.name() + " must be at least 100.");
         }
         return value;
-    }
-
-    private static String envOrDefault(String name, String defaultValue) {
-        String value = System.getenv(name);
-        return value == null || value.isBlank() ? defaultValue : value;
-    }
-
-    private static long parsePollIntervalMs(String value) {
-        long parsed = Long.parseLong(value);
-        if (parsed < 100) {
-            throw new IllegalArgumentException(POLL_INTERVAL_MS + " must be at least 100.");
-        }
-        return parsed;
     }
 
     private static String defaultClientId() {

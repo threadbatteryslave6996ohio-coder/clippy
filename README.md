@@ -118,6 +118,12 @@ mvn -pl clients/dummy package
 java -jar clients/dummy/target/clippy-dummy-client-0.1.0-SNAPSHOT.jar "ping"
 ```
 
+If Maven is not already running on JDK 17, pin `JAVA_HOME` for the build:
+
+```bash
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 mvn -pl clients/dummy package
+```
+
 The dummy client reads `REMOTE_SERVER_URL` and `CLIENT_ID` from `.env` in the repository root. You can also pipe commands on stdin. Each non-empty line is sent as one command.
 
 See [clients/dummy/README.md](clients/dummy/README.md) for the dummy-client-specific notes.

@@ -9,7 +9,9 @@
     <packaging>pom</packaging>
 
     <modules>
+        <module>utils</module>
         <module>server</module>
+        <module>clients/client-envs</module>
         <module>clients/mac</module>
         <module>clients/linux</module>
         <module>clients/dummy</module>

@@ -1,5 +1,8 @@
 package dev.clippy.dummy;
 
+import dev.clippy.clients.envs.ClientEnvs;
+import dev.clippy.utils.envmanager.Env;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -19,8 +22,6 @@ import java.util.StringJoiner;
 import java.util.UUID;
 
 public final class DummyClientApp {
-    private static final String REMOTE_SERVER_URL = "REMOTE_SERVER_URL";
-    private static final String CLIENT_ID = "CLIENT_ID";
     private static final String DOTENV_FILE = ".env";
 
     private final HttpClient httpClient;
@@ -36,15 +37,16 @@ public final class DummyClientApp {
     }
 
     public static void main(String[] args) throws IOException, InterruptedException {
-        Map<String, String> dotenv = loadDotenv();
-        String remoteUrl = requireConfig(REMOTE_SERVER_URL, dotenv);
+        Env env = ClientEnvs.from(loadConfig());
         DummyClientApp app = new DummyClientApp(
-                clipboardEndpoint(remoteUrl),
-                configOrDefault(CLIENT_ID, defaultClientId(), dotenv)
+                clipboardEndpoint(env.get(ClientEnvs.REMOTE_SERVER_URL)),
+                env.has(ClientEnvs.CLIENT_ID) ? env.get(ClientEnvs.CLIENT_ID) : defaultClientId()
         );
 
         if (args.length > 0) {
-            app.sendCommand(joinArgs(args));
+            if (!app.sendCommand(joinArgs(args))) {
+                System.exit(1);
+            }
             return;
         }
 
@@ -58,7 +60,27 @@ public final class DummyClientApp {
         }
     }
 
-    private void sendCommand(String command) throws IOException, InterruptedException {
+    private boolean sendCommand(String command) {
+        try {
+            int statusCode = send(command);
+            if (statusCode < 200 || statusCode >= 300) {
+                System.err.printf("Remote server rejected command. endpoint=%s httpStatus=%d%n", endpoint, statusCode);
+                return false;
+            }
+
+            System.out.printf("Sent command. clientId=%s chars=%d%n", clientId, command.length());
+            return true;
+        } catch (IOException exception) {
+            System.err.printf("Cannot reach remote server. endpoint=%s error=%s%n", endpoint, failureMessage(exception));
+            return false;
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            System.err.printf("Interrupted while sending command. endpoint=%s%n", endpoint);
+            return false;
+        }
+    }
+
+    private int send(String command) throws IOException, InterruptedException {
         String json = """
                 {"clientId":"%s","content":"%s","timestamp":"%s"}"""
                 .formatted(jsonEscape(clientId), jsonEscape(command), Instant.now());
@@ -69,12 +91,7 @@ public final class DummyClientApp {
                 .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
                 .build();
 
-        int statusCode = httpClient.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();
-        if (statusCode < 200 || statusCode >= 300) {
-            throw new IOException("Server responded with HTTP " + statusCode);
-        }
-
-        System.out.printf("Sent command. clientId=%s chars=%d%n", clientId, command.length());
+        return httpClient.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();
     }
 
     private static URI clipboardEndpoint(String remoteUrl) {
@@ -85,22 +102,14 @@ public final class DummyClientApp {
         return URI.create(trimmed.replaceAll("/+$", "") + "/clipboard");
     }
 
-    private static String requireConfig(String name, Map<String, String> dotenv) {
-        String value = config(name, dotenv);
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException("Missing required configuration: " + name);
-        }
-        return value;
-    }
-
-    private static String configOrDefault(String name, String defaultValue, Map<String, String> dotenv) {
-        String value = config(name, dotenv);
-        return value == null || value.isBlank() ? defaultValue : value;
-    }
-
-    private static String config(String name, Map<String, String> dotenv) {
-        String value = System.getenv(name);
-        return value == null || value.isBlank() ? dotenv.get(name) : value;
+    private static Map<String, String> loadConfig() throws IOException {
+        Map<String, String> values = new HashMap<>(loadDotenv());
+        System.getenv().forEach((name, value) -> {
+            if (value != null && !value.isBlank()) {
+                values.put(name, value);
+            }
+        });
+        return values;
     }
 
     private static Map<String, String> loadDotenv() throws IOException {
@@ -167,6 +176,11 @@ public final class DummyClientApp {
             joiner.add(arg);
         }
         return joiner.toString();
+    }
+
+    private static String failureMessage(Exception exception) {
+        String message = exception.getMessage();
+        return message == null || message.isBlank() ? exception.getClass().getSimpleName() : message;
     }
 
     private static String jsonEscape(String value) {

@@ -1,5 +1,8 @@
 package dev.clippy.client;
 
+import dev.clippy.clients.envs.ClientEnvs;
+import dev.clippy.utils.envmanager.Env;
+
 import java.awt.HeadlessException;
 import java.awt.Toolkit;
 import java.awt.datatransfer.Clipboard;
@@ -24,9 +27,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public final class ClipboardClientApp {
-    private static final String REMOTE_SERVER_URL = "REMOTE_SERVER_URL";
-    private static final String CLIENT_ID = "CLIENT_ID";
-    private static final String POLL_INTERVAL_MS = "CLIPBOARD_POLL_INTERVAL_MS";
     private static final Path OFFLINE_LOG_PATH = Path.of("clippy-offline-clipboard.json");
 
     private final Clipboard clipboard;
@@ -45,10 +45,12 @@ public final class ClipboardClientApp {
     }
 
     public static void main(String[] args) {
-        String remoteUrl = requireEnv(REMOTE_SERVER_URL);
-        URI endpoint = clipboardEndpoint(remoteUrl);
-        String clientId = envOrDefault(CLIENT_ID, defaultClientId());
-        long pollIntervalMs = parsePollIntervalMs(envOrDefault(POLL_INTERVAL_MS, "1"));
+        Env env = ClientEnvs.fromSystem();
+        URI endpoint = clipboardEndpoint(env.get(ClientEnvs.REMOTE_SERVER_URL));
+        String clientId = env.has(ClientEnvs.CLIENT_ID) ? env.get(ClientEnvs.CLIENT_ID) : defaultClientId();
+        long pollIntervalMs = env.has(ClientEnvs.CLIPBOARD_POLL_INTERVAL_MS)
+                ? validatePollIntervalMs(env.get(ClientEnvs.CLIPBOARD_POLL_INTERVAL_MS))
+                : 1L;
 
         Clipboard clipboard;
         try {
@@ -159,25 +161,11 @@ public final class ClipboardClientApp {
         return URI.create(trimmed.replaceAll("/+$", "") + "/clipboard");
     }
 
-    private static String requireEnv(String name) {
-        String value = System.getenv(name);
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException("Missing required environment variable: " + name);
+    private static long validatePollIntervalMs(long value) {
+        if (value < 1) {
+            throw new IllegalArgumentException(ClientEnvs.CLIPBOARD_POLL_INTERVAL_MS.name() + " must be at least 1.");
         }
         return value;
-    }
-
-    private static String envOrDefault(String name, String defaultValue) {
-        String value = System.getenv(name);
-        return value == null || value.isBlank() ? defaultValue : value;
-    }
-
-    private static long parsePollIntervalMs(String value) {
-        long parsed = Long.parseLong(value);
-        if (parsed < 1) {
-            throw new IllegalArgumentException(POLL_INTERVAL_MS + " must be at least 1.");
-        }
-        return parsed;
     }
 
     private static String defaultClientId() {

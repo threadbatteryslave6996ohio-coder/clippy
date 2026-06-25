@@ -19,6 +19,12 @@ mvn -pl clients/dummy package
 java -jar clients/dummy/target/clippy-dummy-client-0.1.0-SNAPSHOT.jar "ping"
 ```
 
+If Maven is not already running on JDK 17, pin `JAVA_HOME` for the build:
+
+```bash
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 mvn -pl clients/dummy package
+```
+
 The client reads configuration from `.env` in the repository root:
 
 ```dotenv
