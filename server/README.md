@@ -63,6 +63,8 @@ The app server listens on `http://localhost:8080` by default. The auth server li
 
 ## Configuration
 
+The server loads configuration from a `.env` file in the current directory or any parent directory, then overlays real process environment variables. The shared env manager handles this loading.
+
 The default local configuration matches `server/docker-compose.yml`:
 
 ```text
@@ -73,7 +75,7 @@ SERVER_PORT=8080
 CLIPPY_AUTH_BASE_URL=http://localhost:8081
 ```
 
-Set those environment variables before running Maven to override them.
+Set those environment variables, or the matching `.env` entries, before running Maven to override them.
 
 ## Endpoint
 
