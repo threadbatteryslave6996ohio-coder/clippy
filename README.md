@@ -186,6 +186,20 @@ http://10.0.2.2:8080
 
 See [clients/android/README.md](clients/android/README.md) for Android behavior, build, and local-server notes.
 
+## Run Envoy
+
+Start the local Envoy proxy for external services:
+
+```bash
+cd ~/Desktop/clippy
+./scripts/start-envoy.sh
+```
+
+It listens on `http://localhost:10080` and routes:
+
+- `http://localhost:10080/clipy` to `http://localhost:8080`
+- `http://localhost:10080/auth` to `http://localhost:8081`
+
 ## API
 
 Clients send clipboard entries to:

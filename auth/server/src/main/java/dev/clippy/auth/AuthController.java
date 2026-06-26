@@ -1,5 +1,6 @@
 package dev.clippy.auth;
 
+import dev.clippy.utils.logger.CustomLogger;
 import jakarta.validation.Valid;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -13,6 +14,8 @@ import java.time.Instant;
 
 @RestController
 public class AuthController {
+    private static final CustomLogger LOGGER = new CustomLogger("auth-server");
+
     private final ClientIdentityRepository identities;
     private final ClientTokenRepository tokens;
     private final CredentialHasher credentialHasher;
@@ -53,19 +56,28 @@ public class AuthController {
 
     @PostMapping("/login")
     public LoginResponse login(@Valid @RequestBody LoginRequest request) {
+        LOGGER.log("Login request received for clientId=" + request.clientId());
+
         ClientIdentity identity = identities.findByClientId(request.clientId())
                 .filter(ClientIdentity::isActive)
                 .filter(candidate -> credentialHasher.matches(request.secret(), candidate.getSecretHash()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid client credentials."));
+                .orElseThrow(() -> {
+                    LOGGER.log("Login rejected for clientId=" + request.clientId());
+                    return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid client credentials.");
+                });
 
         String token = tokenGenerator.newToken();
-        tokens.save(new ClientToken(identity, credentialHasher.hashToken(token), Instant.now()));
+        Instant issuedAt = Instant.now();
+        tokens.save(new ClientToken(identity, credentialHasher.hashToken(token), issuedAt));
+        LOGGER.log("Issued login token for clientId=" + identity.getClientId() + " at " + issuedAt);
 
         return new LoginResponse(identity.getClientId(), token);
     }
 
     @PostMapping("/tokens/check")
     public CheckTokenResponse checkToken(@Valid @RequestBody CheckTokenRequest request) {
+        LOGGER.log("Token check request received for clientId=" + request.clientId());
+
         boolean valid = tokens.findByTokenHash(credentialHasher.hashToken(request.token()))
                 .map(ClientToken::getIdentity)
                 .filter(ClientIdentity::isActive)
@@ -73,6 +85,7 @@ public class AuthController {
                 .filter(request.clientId()::equals)
                 .isPresent();
 
+        LOGGER.log("Token check completed for clientId=" + request.clientId() + ", valid=" + valid);
         return new CheckTokenResponse(valid, request.clientId());
     }
 }

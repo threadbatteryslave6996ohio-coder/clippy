@@ -6,15 +6,25 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 import java.io.IOException;
+import java.nio.file.Path;
 
 @SpringBootApplication
 public class ClippyAuthServerApplication {
     public static void main(String[] args) throws IOException {
         Env env = AuthServerEnvs.load();
+        configureCustomLoggerDirectory(env);
         logLocalDatabaseIfApplicable(env);
         SpringApplication application = new SpringApplication(ClippyAuthServerApplication.class);
         application.setDefaultProperties(AuthServerEnvs.springDefaults(env));
         application.run(args);
+    }
+
+    private static void configureCustomLoggerDirectory(Env env) {
+        String loggingFileName = env.get(AuthServerEnvs.AUTH_LOGGING_FILE_NAME);
+        Path loggingPath = Path.of(loggingFileName == null ? "" : loggingFileName.trim());
+        Path parentDirectory = loggingPath.getParent();
+        String customLoggerDir = parentDirectory == null ? Path.of(".").toString() : parentDirectory.toString();
+        System.setProperty("custom.logger.dir", customLoggerDir);
     }
 
     private static void logLocalDatabaseIfApplicable(Env env) {

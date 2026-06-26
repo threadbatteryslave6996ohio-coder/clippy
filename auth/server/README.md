@@ -60,6 +60,31 @@ The default local configuration matches `docker-compose.yml`.
 | `AUTH_DATASOURCE_PASSWORD` | `auth` | Database password. |
 | `AUTH_LOGGING_FILE_NAME` | `logs/clippy-auth-server.log` | File path for server logs. |
 
+## Logging
+
+The auth server uses two logging paths:
+
+- Spring Boot / Logback writes the normal application logs to the file configured by `AUTH_LOGGING_FILE_NAME` and `logging.file.name`.
+- The custom file logger writes a separate `auth-server.txt` file for startup and request-level audit messages.
+
+The custom logger currently records:
+
+- startup messages when the auth server detects a local database URL
+- each `/login` request
+- each successful token issuance
+- each `/tokens/check` request
+- each token check result
+
+The auth server configures the custom logger to use the same directory as `AUTH_LOGGING_FILE_NAME`, so both auth log files land in the same folder by default. The custom logger file name is `auth-server.txt`.
+
+If you run the `CustomLogger` directly elsewhere, you can still redirect it with the JVM system property `custom.logger.dir`, for example:
+
+```bash
+java -Dcustom.logger.dir=/tmp/clippy-logs -jar auth/server/target/clippy-auth-server-0.1.0-SNAPSHOT.jar
+```
+
+Raw secrets and raw bearer tokens are not written to the custom log file.
+
 Example `.env`:
 
 ```dotenv
