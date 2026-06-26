@@ -20,6 +20,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -34,6 +35,7 @@ import java.util.concurrent.TimeUnit;
 
 public final class LinuxClipboardClientApp {
     private static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(2);
+    private static final Path OFFLINE_LOG_PATH = Path.of("clippy-offline-clipboard.json");
 
     private final ClipboardReader clipboardReader;
     private final HttpClient httpClient;
@@ -81,7 +83,14 @@ public final class LinuxClipboardClientApp {
                 throw new IllegalStateException("AUTH_SERVER_URL is required when CLIENT_SECRET is set.");
             }
             System.out.printf("Refreshing auth token from %s for clientId=%s%n", authServerUrl, clientId);
-            authSession.refresh();
+            logAuthOperation(clientId, authServerUrl, "refresh", "started", "startup token refresh");
+            try {
+                authSession.refresh();
+                logAuthOperation(clientId, authServerUrl, "refresh", "succeeded", "startup token refresh");
+            } catch (RuntimeException exception) {
+                logAuthOperation(clientId, authServerUrl, "refresh", "failed", authFailureMessage(exception));
+                throw exception;
+            }
         } else if (!authSession.hasToken()) {
             throw new IllegalStateException("Set CLIENT_SECRET for auth login or CLIENT_TOKEN for a static token.");
         }
@@ -111,7 +120,8 @@ public final class LinuxClipboardClientApp {
         }
 
         try {
-            int statusCode = sendWithAuthRetry(content);
+            ClipboardPayload payload = new ClipboardPayload(clientId, content, Instant.now());
+            int statusCode = sendWithAuthRetry(payload);
             if (statusCode >= 200 && statusCode < 300) {
                 lastSentContent = content;
                 previousSendFailed = false;
@@ -119,29 +129,41 @@ public final class LinuxClipboardClientApp {
                 System.out.printf("Sent clipboard change. chars=%d%n", content.length());
             } else if (statusCode == 401) {
                 logAuthFailure("Remote server rejected the bearer token with HTTP 401.");
+                logOffline(payload, "Unauthorized");
             } else {
                 logSendFailure("Server responded with HTTP " + statusCode);
+                logOffline(payload, "Server responded with HTTP " + statusCode);
             }
         } catch (IOException exception) {
             logSendFailure(exception.getMessage());
+            logOffline(new ClipboardPayload(clientId, content, Instant.now()), exception.getMessage());
         } catch (AuthClientException exception) {
             logAuthFailure(authFailureMessage(exception));
+            logOffline(new ClipboardPayload(clientId, content, Instant.now()), authFailureMessage(exception));
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             logSendFailure("Interrupted while sending clipboard content.");
+            logOffline(new ClipboardPayload(clientId, content, Instant.now()), "Interrupted while sending clipboard content.");
         }
     }
 
-    private int sendWithAuthRetry(String content) throws IOException, InterruptedException {
-        int statusCode = send(content, authSession.token());
+    private int sendWithAuthRetry(ClipboardPayload payload) throws IOException, InterruptedException {
+        int statusCode = send(payload.content(), authSession.token());
         if (statusCode != 401 || !authSession.canRefresh()) {
             return statusCode;
         }
 
         logAuthFailure("Remote server rejected the bearer token with HTTP 401. Refreshing from auth server.");
-        authSession.refresh();
-        previousAuthFailed = false;
-        return send(content, authSession.token());
+        logAuthOperation(clientId, authServerUrl, "refresh", "started", "HTTP 401 token refresh");
+        try {
+            authSession.refresh();
+            previousAuthFailed = false;
+            logAuthOperation(clientId, authServerUrl, "refresh", "succeeded", "HTTP 401 token refresh");
+        } catch (RuntimeException exception) {
+            logAuthOperation(clientId, authServerUrl, "refresh", "failed", authFailureMessage(exception));
+            throw exception;
+        }
+        return send(payload.content(), authSession.token());
     }
 
     private int send(String content, String clientToken) throws IOException, InterruptedException {
@@ -178,6 +200,67 @@ public final class LinuxClipboardClientApp {
             System.err.printf("Auth refresh failed. clientId=%s authServer=%s error=%s%n", clientId, authServerUrl, message);
             previousAuthFailed = true;
         }
+    }
+
+    private void logOffline(ClipboardPayload payload, String message) {
+        String failureMessage = message == null || message.isBlank() ? "unknown error" : message;
+        System.err.printf("Cannot reach remote server. clientId=%s endpoint=%s error=%s%n", clientId, endpoint, failureMessage);
+        try {
+            appendOfflineEntry(payload.toJson());
+            lastSentContent = payload.content();
+            System.err.printf("Logged clipboard message to %s. clientId=%s chars=%d%n",
+                    OFFLINE_LOG_PATH.toAbsolutePath(), clientId, payload.content().length());
+        } catch (IOException exception) {
+            System.err.printf("Clipboard send failed and local JSON log failed. clientId=%s error=%s%n",
+                    clientId, exception.getMessage());
+        }
+    }
+
+    private static void logAuthOperation(
+            String clientId,
+            String authServerUrl,
+            String operation,
+            String status,
+            String message
+    ) {
+        try {
+            appendOfflineEntry(new AuthLogEntry(clientId, authServerUrl, operation, status, message, Instant.now()).toJson());
+        } catch (IOException exception) {
+            System.err.printf("Auth operation log failed. clientId=%s authServer=%s error=%s%n",
+                    clientId, authServerUrl == null ? "unset" : authServerUrl, exception.getMessage());
+        }
+    }
+
+    private static void appendOfflineEntry(String json) throws IOException {
+        String entry = "  " + json;
+        if (!Files.exists(OFFLINE_LOG_PATH) || Files.size(OFFLINE_LOG_PATH) == 0) {
+            Files.writeString(OFFLINE_LOG_PATH, "[\n" + entry + "\n]\n", StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            return;
+        }
+
+        String existing = Files.readString(OFFLINE_LOG_PATH, StandardCharsets.UTF_8);
+        int arrayEnd = existing.lastIndexOf(']');
+        if (arrayEnd < 0) {
+            throw new IOException("Offline JSON log is not a JSON array: " + OFFLINE_LOG_PATH.toAbsolutePath());
+        }
+
+        String beforeEnd = existing.substring(0, arrayEnd).stripTrailing();
+        String separator = beforeEnd.endsWith("[") ? "\n" : ",\n";
+        Files.writeString(OFFLINE_LOG_PATH, beforeEnd + separator + entry + "\n]\n", StandardCharsets.UTF_8,
+                StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+    }
+
+    private static String authFailureMessage(RuntimeException exception) {
+        String message = exception.getMessage();
+        if (message == null || message.isBlank()) {
+            return exception.getClass().getSimpleName();
+        }
+        Throwable cause = exception.getCause();
+        if (cause == null || cause.getMessage() == null || cause.getMessage().isBlank()) {
+            return message;
+        }
+        return message + ": " + cause.getMessage();
     }
 
     private static String authFailureMessage(AuthClientException exception) {
@@ -303,6 +386,36 @@ public final class LinuxClipboardClientApp {
             }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private record ClipboardPayload(String clientId, String content, Instant timestamp) {
+        private String toJson() {
+            return """
+                    {"clientId":"%s","content":"%s","timestamp":"%s"}"""
+                    .formatted(jsonEscape(clientId), jsonEscape(content), timestamp);
+        }
+    }
+
+    private record AuthLogEntry(
+            String clientId,
+            String authServerUrl,
+            String operation,
+            String status,
+            String message,
+            Instant timestamp
+    ) {
+        private String toJson() {
+            return """
+                    {"type":"auth","clientId":"%s","authServer":"%s","operation":"%s","status":"%s","message":"%s","timestamp":"%s"}"""
+                    .formatted(
+                            jsonEscape(clientId),
+                            jsonEscape(authServerUrl == null ? "unset" : authServerUrl),
+                            jsonEscape(operation),
+                            jsonEscape(status),
+                            jsonEscape(message == null ? "" : message),
+                            timestamp
+                    );
         }
     }
 
