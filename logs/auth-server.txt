@@ -1,0 +1,16 @@
+[auth-server] Login request received for clientId=dummy
+
+-----
+[auth-server] Issued login token for clientId=dummy at 2026-06-26T15:29:21.764632513Z
+
+-----
+[auth-server] Login request received for clientId=dummy
+
+-----
+[auth-server] Issued login token for clientId=dummy at 2026-06-26T15:41:38.133198815Z
+
+-----
+[auth-server] Token check request received for clientId=dummy
+
+-----
+[auth-server] Token check completed for clientId=dummy, valid=true
