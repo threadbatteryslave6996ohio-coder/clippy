@@ -94,14 +94,16 @@ Run the macOS client from a logged-in graphical session so Java can read the sys
 ```bash
 cd ~/Desktop/clippy
 export REMOTE_SERVER_URL=http://localhost:8080
+export AUTH_SERVER_URL=http://localhost:8081
 export CLIENT_ID=my-mac
-export CLIENT_TOKEN=token-from-auth-login
+export CLIENT_SECRET=change-me-please
 export CLIPBOARD_POLL_INTERVAL_MS=1000
 mvn -pl clients/mac package
 java -jar clients/mac/target/clippy-client-0.1.0-SNAPSHOT.jar
 ```
 
-`REMOTE_SERVER_URL` can be the server base URL or the full `/clipboard` endpoint. `CLIENT_TOKEN` is required. `CLIENT_ID` defaults to the machine hostname. `CLIPBOARD_POLL_INTERVAL_MS` defaults to `1`.
+`REMOTE_SERVER_URL` can be the server base URL or the full `/clipboard` endpoint. `CLIENT_ID` defaults to the machine hostname. `CLIPBOARD_POLL_INTERVAL_MS` defaults to `1`.
+`CLIENT_SECRET` lets the client log in to the auth server and refresh tokens on `401`. `AUTH_SERVER_URL` is required when `CLIENT_SECRET` is set. If you prefer a static token, keep `CLIENT_SECRET` unset and provide `CLIENT_TOKEN` instead.
 Java desktop clients also read these values from `.env` in the repository root, with shell environment variables taking precedence.
 
 See [clients/mac/README.md](clients/mac/README.md) for the macOS-client-specific notes.
@@ -119,8 +121,9 @@ Start the Clippy server first, then run the Linux client from a logged-in graphi
 ```bash
 cd ~/Desktop/clippy
 export REMOTE_SERVER_URL=http://localhost:8080
+export AUTH_SERVER_URL=http://localhost:8081
 export CLIENT_ID=ubuntu-gnome
-export CLIENT_TOKEN=token-from-auth-login
+export CLIENT_SECRET=change-me-please
 export CLIPBOARD_POLL_INTERVAL_MS=1000
 mvn -pl clients/linux package
 java -jar clients/linux/target/clippy-linux-client-0.1.0-SNAPSHOT.jar
@@ -128,7 +131,8 @@ java -jar clients/linux/target/clippy-linux-client-0.1.0-SNAPSHOT.jar
 
 `REMOTE_SERVER_URL` is required. It can be the server base URL, such as `http://localhost:8080`, or the full endpoint, such as `http://localhost:8080/clipboard`.
 
-`CLIENT_TOKEN` is required. `CLIENT_ID` is optional and defaults to the machine hostname. `CLIPBOARD_POLL_INTERVAL_MS` is optional and defaults to `1000`.
+`CLIENT_ID` is optional and defaults to the machine hostname. `CLIPBOARD_POLL_INTERVAL_MS` is optional and defaults to `1000`.
+`CLIENT_SECRET` lets the client log in to the auth server and refresh tokens on `401`. `AUTH_SERVER_URL` is required when `CLIENT_SECRET` is set. If you prefer a static token, keep `CLIENT_SECRET` unset and provide `CLIENT_TOKEN` instead.
 Java desktop clients also read these values from `.env` in the repository root, with shell environment variables taking precedence.
 
 The client polls the local text clipboard and sends changed text to the server. It uses `wl-paste` on GNOME Wayland, `xclip` or `xsel` on X11, and Java AWT as a fallback.
