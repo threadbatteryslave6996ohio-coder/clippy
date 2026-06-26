@@ -48,6 +48,8 @@ java -jar auth/server/target/clippy-auth-server-0.1.0-SNAPSHOT.jar
 
 ## Configuration
 
+The auth server loads configuration from a `.env` file if one is present in the current directory or any parent directory, then overlays real process environment variables.
+
 The default local configuration matches `docker-compose.yml`.
 
 | Environment variable | Default | Purpose |
@@ -57,6 +59,16 @@ The default local configuration matches `docker-compose.yml`.
 | `AUTH_DATASOURCE_USERNAME` | `auth` | Database username. |
 | `AUTH_DATASOURCE_PASSWORD` | `auth` | Database password. |
 | `AUTH_LOGGING_FILE_NAME` | `logs/clippy-auth-server.log` | File path for server logs. |
+
+Example `.env`:
+
+```dotenv
+AUTH_DATASOURCE_URL=jdbc:postgresql://localhost:5433/auth
+AUTH_DATASOURCE_USERNAME=auth
+AUTH_DATASOURCE_PASSWORD=auth
+AUTH_SERVER_PORT=8081
+AUTH_LOGGING_FILE_NAME=logs/clippy-auth-server.log
+```
 
 The service uses Hibernate `ddl-auto: update`, so it creates or updates the local schema on startup. The persistent tables are:
 
