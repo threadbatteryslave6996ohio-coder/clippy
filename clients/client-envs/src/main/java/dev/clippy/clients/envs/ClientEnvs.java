@@ -1,20 +1,15 @@
 package dev.clippy.clients.envs;
 
 import dev.clippy.utils.envmanager.Env;
+import dev.clippy.utils.envmanager.EnvFiles;
 import dev.clippy.utils.envmanager.EnvOption;
 import dev.clippy.utils.envmanager.EnvSchema;
 import dev.clippy.utils.envmanager.EnvType;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.Map;
 
 public final class ClientEnvs {
-    private static final String DOTENV_FILE = ".env";
-
     public static final EnvOption<String> REMOTE_SERVER_URL;
     public static final EnvOption<String> CLIENT_ID;
     public static final EnvOption<String> CLIENT_TOKEN;
@@ -44,70 +39,10 @@ public final class ClientEnvs {
     }
 
     public static Env load() throws IOException {
-        return from(loadConfig());
+        return from(EnvFiles.load());
     }
 
     public static Env from(Map<String, String> source) {
         return ENV.from(source);
-    }
-
-    private static Map<String, String> loadConfig() throws IOException {
-        Map<String, String> values = new HashMap<>(loadDotenv());
-        System.getenv().forEach((name, value) -> {
-            if (value != null && !value.isBlank()) {
-                values.put(name, value);
-            }
-        });
-        return values;
-    }
-
-    private static Map<String, String> loadDotenv() throws IOException {
-        Path path = findDotenv();
-        if (path == null) {
-            return Map.of();
-        }
-
-        Map<String, String> values = new HashMap<>();
-        for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
-            String trimmed = line.trim();
-            if (trimmed.isEmpty() || trimmed.startsWith("#")) {
-                continue;
-            }
-
-            int separator = trimmed.indexOf('=');
-            if (separator <= 0) {
-                continue;
-            }
-
-            String key = trimmed.substring(0, separator).trim();
-            String value = unquote(trimmed.substring(separator + 1).trim());
-            if (!key.isEmpty()) {
-                values.put(key, value);
-            }
-        }
-        return values;
-    }
-
-    private static Path findDotenv() {
-        Path directory = Path.of("").toAbsolutePath();
-        while (directory != null) {
-            Path candidate = directory.resolve(DOTENV_FILE);
-            if (Files.isRegularFile(candidate)) {
-                return candidate;
-            }
-            directory = directory.getParent();
-        }
-        return null;
-    }
-
-    private static String unquote(String value) {
-        if (value.length() >= 2) {
-            char first = value.charAt(0);
-            char last = value.charAt(value.length() - 1);
-            if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
-                return value.substring(1, value.length() - 1);
-            }
-        }
-        return value;
     }
 }

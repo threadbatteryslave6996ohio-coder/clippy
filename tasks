@@ -7,3 +7,7 @@ ensure the env module is validating the envs
 
 # authentication 
 ## ensure all clients have proper authentication and on the server 
+
+
+# agent file 
+## make it in the agent file to not replace core services, it should always strive to achieve something with the minimun amount of code even if more thinking is required, its should usually use existing services since the task probably has a module for that and if there is a module it should use the module and if it dioesnt use the module it should provde a clear resson why it chose not to use the module 

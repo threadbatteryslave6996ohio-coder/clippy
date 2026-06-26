@@ -3,7 +3,9 @@
 /home/kamina_goat/Desktop/clippy/clients/linux/src/main/java/dev/clippy/linux/LinuxClipboardClientApp.java
 /home/kamina_goat/Desktop/clippy/utils/src/main/java/dev/clippy/utils/envmanager/Env.java
 /home/kamina_goat/Desktop/clippy/utils/src/main/java/dev/clippy/utils/envmanager/EnvClassBuilder.java
+/home/kamina_goat/Desktop/clippy/utils/src/main/java/dev/clippy/utils/envmanager/EnvFiles.java
 /home/kamina_goat/Desktop/clippy/utils/src/main/java/dev/clippy/utils/envmanager/EnvOption.java
 /home/kamina_goat/Desktop/clippy/utils/src/main/java/dev/clippy/utils/envmanager/EnvSchema.java
 /home/kamina_goat/Desktop/clippy/utils/src/main/java/dev/clippy/utils/envmanager/EnvType.java
 /home/kamina_goat/Desktop/clippy/utils/src/main/java/dev/clippy/utils/envmanager/EnvValidationException.java
+/home/kamina_goat/Desktop/clippy/utils/src/main/java/dev/clippy/utils/logger/CustomLogger.java

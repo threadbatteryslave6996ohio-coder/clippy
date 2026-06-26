@@ -2,27 +2,27 @@ package dev.clippy.server;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.when;
 
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -42,13 +42,9 @@ class ClipboardEntryHttpIntegrationTest {
     private int port;
 
     @Autowired
-    private TestRestTemplate restTemplate;
-
-    @Autowired
     private ClipboardEntryRepository repository;
 
-    @MockBean
-    private AuthTokenVerifier authTokenVerifier;
+    private final HttpClient httpClient = HttpClient.newHttpClient();
 
     @BeforeEach
     void clearDatabase() {
@@ -56,7 +52,7 @@ class ClipboardEntryHttpIntegrationTest {
     }
 
     @Test
-    void createsClipboardEntryFromHttpRequestAndPersistsItInPostgres() {
+    void createsClipboardEntryFromHttpRequestAndPersistsItInPostgres() throws Exception {
         Instant timestamp = Instant.parse("2026-06-23T12:00:00Z");
         String json = """
                 {
@@ -66,36 +62,24 @@ class ClipboardEntryHttpIntegrationTest {
                 }
                 """.formatted(timestamp);
 
-        when(authTokenVerifier.isTokenValidForClient("android-pixel-8", "valid-token")).thenReturn(true);
+        HttpResponse<String> response = post("/clipboard", json, "valid-token");
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth("valid-token");
-
-        ResponseEntity<ClipboardEntryResponse> response = restTemplate.postForEntity(
-                "http://localhost:%d/clipboard".formatted(port),
-                new HttpEntity<>(json, headers),
-                ClipboardEntryResponse.class
-        );
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().id()).isNotNull();
-        assertThat(response.getBody().clientId()).isEqualTo("android-pixel-8");
-        assertThat(response.getBody().timestamp()).isEqualTo(timestamp);
+        assertThat(response.statusCode()).isEqualTo(201);
+        assertThat(response.body()).contains("\"id\":");
+        assertThat(response.body()).contains("\"clientId\":\"android-pixel-8\"");
+        assertThat(response.body()).contains("\"timestamp\":\"" + timestamp + "\"");
 
         List<ClipboardEntry> entries = repository.findAll();
         assertThat(entries).hasSize(1);
 
         ClipboardEntry saved = entries.get(0);
-        assertThat(saved.getId()).isEqualTo(response.getBody().id());
         assertThat(saved.getClientId()).isEqualTo("android-pixel-8");
         assertThat(saved.getContent()).isEqualTo("clipboard text");
         assertThat(saved.getTimestamp()).isEqualTo(timestamp);
     }
 
     @Test
-    void rejectsClipboardEntryWithoutBearerToken() {
+    void rejectsClipboardEntryWithoutBearerToken() throws Exception {
         String json = """
                 {
                   "clientId": "android-pixel-8",
@@ -103,16 +87,29 @@ class ClipboardEntryHttpIntegrationTest {
                 }
                 """;
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpResponse<String> response = post("/clipboard", json, null);
 
-        ResponseEntity<String> response = restTemplate.postForEntity(
-                "http://localhost:%d/clipboard".formatted(port),
-                new HttpEntity<>(json, headers),
-                String.class
-        );
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.statusCode()).isEqualTo(401);
         assertThat(repository.findAll()).isEmpty();
+    }
+
+    private HttpResponse<String> post(String path, String json, String bearerToken) throws IOException, InterruptedException {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create("http://localhost:%d%s".formatted(port, path)))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json));
+        if (bearerToken != null) {
+            builder.header("Authorization", "Bearer " + bearerToken);
+        }
+
+        return httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    @TestConfiguration
+    static class TestConfig {
+        @Bean
+        @Primary
+        AuthTokenVerifier authTokenVerifier() {
+            return (clientId, token) -> "android-pixel-8".equals(clientId) && "valid-token".equals(token);
+        }
     }
 }

@@ -6,7 +6,7 @@ The server does not own client identities. It validates each clipboard request b
 
 ## Requirements
 
-- JDK 17+ with `javac` available on `PATH`
+- JDK 25+ with `javac` available on `PATH`
 - Maven 3.9+
 - Docker and Docker Compose for local PostgreSQL
 
@@ -18,11 +18,11 @@ javac -version
 mvn -version
 ```
 
-If Maven fails with `release version 17 not supported`, install a full JDK rather than a JRE and point `JAVA_HOME` at it. On Ubuntu, for example:
+If Maven fails with `release version 25 not supported`, install a full JDK rather than a JRE and point `JAVA_HOME` at it. On Ubuntu, for example:
 
 ```bash
-sudo apt install openjdk-17-jdk
-export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
+sudo apt install openjdk-25-jdk
+export JAVA_HOME=/usr/lib/jvm/java-25-openjdk-arm64
 export PATH="$JAVA_HOME/bin:$PATH"
 ```
 

@@ -7,7 +7,7 @@ The client is an explicit foreground process. It reads the local text clipboard,
 ## Requirements
 
 - Ubuntu GNOME on ARM or x86_64
-- JDK 17+ with `javac` available on `PATH`
+- JDK 25+ with `javac` available on `PATH`
 - Maven 3.9+
 - A running Clippy auth server and app server
 - `wl-clipboard` for GNOME Wayland, or `xclip`/`xsel` for X11
@@ -15,7 +15,7 @@ The client is an explicit foreground process. It reads the local text clipboard,
 Install the recommended Ubuntu packages:
 
 ```bash
-sudo apt install openjdk-17-jdk maven wl-clipboard xclip
+sudo apt install openjdk-25-jdk maven wl-clipboard xclip
 ```
 
 ## Run the Client

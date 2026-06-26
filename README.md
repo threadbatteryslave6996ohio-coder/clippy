@@ -13,7 +13,7 @@ Client-specific docs:
 
 ## Requirements
 
-- JDK 17+ with `javac` available on `PATH`
+- JDK 25+ with `javac` available on `PATH`
 - Maven 3.9+
 - Docker and Docker Compose for the local PostgreSQL database
 - Android Studio for the Android client
@@ -26,11 +26,11 @@ javac -version
 mvn -version
 ```
 
-If Maven fails with `release version 17 not supported`, install a full JDK rather than a JRE and point `JAVA_HOME` at it. On Ubuntu, for example:
+If Maven fails with `release version 25 not supported`, install a full JDK rather than a JRE and point `JAVA_HOME` at it. On Ubuntu, for example:
 
 ```bash
-sudo apt install openjdk-17-jdk
-export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
+sudo apt install openjdk-25-jdk
+export JAVA_HOME=/usr/lib/jvm/java-25-openjdk-arm64
 export PATH="$JAVA_HOME/bin:$PATH"
 ```
 
@@ -93,13 +93,20 @@ Put the returned token in `CLIENT_TOKEN`.
 
 Run the macOS client from a logged-in graphical session so Java can read the system clipboard:
 
+Create or update `.env` in the repository root:
+
+```dotenv
+REMOTE_SERVER_URL=http://localhost:8080
+AUTH_SERVER_URL=http://localhost:8081
+CLIENT_ID=my-mac
+CLIENT_SECRET=change-me-please
+CLIPBOARD_POLL_INTERVAL_MS=1000
+```
+
+Then build and start the client:
+
 ```bash
 cd ~/Desktop/clippy
-export REMOTE_SERVER_URL=http://localhost:8080
-export AUTH_SERVER_URL=http://localhost:8081
-export CLIENT_ID=my-mac
-export CLIENT_SECRET=change-me-please
-export CLIPBOARD_POLL_INTERVAL_MS=1000
 mvn -pl clients/mac package
 java -jar clients/mac/target/clippy-client-0.1.0-SNAPSHOT.jar
 ```
@@ -157,10 +164,10 @@ mvn -pl clients/dummy package
 java -jar clients/dummy/target/clippy-dummy-client-0.1.0-SNAPSHOT.jar "ping"
 ```
 
-If Maven is not already running on JDK 17, pin `JAVA_HOME` for the build:
+If Maven is not already running on JDK 25, pin `JAVA_HOME` for the build:
 
 ```bash
-JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 mvn -pl clients/dummy package
+JAVA_HOME=/usr/lib/jvm/java-25-openjdk-arm64 mvn -pl clients/dummy package
 ```
 
 The dummy client reads `REMOTE_SERVER_URL` and `CLIENT_ID` from `.env` in the repository root. You can also pipe commands on stdin. Each non-empty line is sent as one command.
