@@ -12,6 +12,14 @@
 
     <artifactId>clippy-client</artifactId>
 
+    <dependencies>
+        <dependency>
+            <groupId>dev.clippy</groupId>
+            <artifactId>clippy-auth-client</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+
     <build>
         <plugins>
             <plugin>

@@ -24,8 +24,9 @@ From the repository root:
 
 ```bash
 export REMOTE_SERVER_URL=http://localhost:8080
+export AUTH_SERVER_URL=http://localhost:8081
 export CLIENT_ID=ubuntu-gnome
-export CLIENT_TOKEN=token-from-auth-login
+export CLIENT_SECRET=change-me-please
 export CLIPBOARD_POLL_INTERVAL_MS=1000
 mvn -pl clients/linux package
 java -jar clients/linux/target/clippy-linux-client-0.1.0-SNAPSHOT.jar
@@ -35,8 +36,9 @@ The client also reads configuration from `.env` in the repository root:
 
 ```dotenv
 REMOTE_SERVER_URL=http://localhost:8080
+AUTH_SERVER_URL=http://localhost:8081
 CLIENT_ID=ubuntu-gnome
-CLIENT_TOKEN=token-from-auth-login
+CLIENT_SECRET=change-me-please
 CLIPBOARD_POLL_INTERVAL_MS=1000
 CLIPBOARD_BACKEND=wl-paste
 ```
@@ -45,7 +47,9 @@ Shell environment variables override values from `.env` when both are set.
 
 `REMOTE_SERVER_URL` is required. It may be either the server base URL, such as `http://localhost:8080`, or the full endpoint, such as `http://localhost:8080/clipboard`.
 
-`CLIENT_TOKEN` is required and must come from the auth server `/login` endpoint. `CLIENT_ID` is optional and defaults to the machine hostname. `CLIPBOARD_POLL_INTERVAL_MS` is optional and defaults to `1000`.
+`CLIENT_ID` is optional and defaults to the machine hostname. `CLIPBOARD_POLL_INTERVAL_MS` is optional and defaults to `1000`.
+
+`CLIENT_SECRET` lets the client log in to the auth server and refresh tokens when the server returns `401`. `AUTH_SERVER_URL` is required when `CLIENT_SECRET` is set. If you prefer a static token, keep `CLIENT_SECRET` unset and provide `CLIENT_TOKEN` instead.
 
 ## Clipboard Backend
 

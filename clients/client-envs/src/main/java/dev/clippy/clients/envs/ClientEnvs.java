@@ -18,6 +18,8 @@ public final class ClientEnvs {
     public static final EnvOption<String> REMOTE_SERVER_URL;
     public static final EnvOption<String> CLIENT_ID;
     public static final EnvOption<String> CLIENT_TOKEN;
+    public static final EnvOption<String> CLIENT_SECRET;
+    public static final EnvOption<String> AUTH_SERVER_URL;
     public static final EnvOption<Long> CLIPBOARD_POLL_INTERVAL_MS;
     public static final EnvOption<String> CLIPBOARD_BACKEND;
     public static final EnvSchema ENV;
@@ -26,7 +28,9 @@ public final class ClientEnvs {
         var builder = EnvSchema.builder();
         REMOTE_SERVER_URL = builder.required("REMOTE_SERVER_URL", EnvType.string());
         CLIENT_ID = builder.optional("CLIENT_ID", EnvType.string());
-        CLIENT_TOKEN = builder.required("CLIENT_TOKEN", EnvType.string());
+        CLIENT_TOKEN = builder.optional("CLIENT_TOKEN", EnvType.string());
+        CLIENT_SECRET = builder.optional("CLIENT_SECRET", EnvType.string());
+        AUTH_SERVER_URL = builder.optional("AUTH_SERVER_URL", EnvType.string());
         CLIPBOARD_POLL_INTERVAL_MS = builder.optional("CLIPBOARD_POLL_INTERVAL_MS", EnvType.longInteger());
         CLIPBOARD_BACKEND = builder.optional("CLIPBOARD_BACKEND", EnvType.string());
         ENV = builder.build();

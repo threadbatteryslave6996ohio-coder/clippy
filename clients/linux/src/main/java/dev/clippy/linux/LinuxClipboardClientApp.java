@@ -1,5 +1,7 @@
 package dev.clippy.linux;
 
+import dev.clippy.auth.client.AuthClientException;
+import dev.clippy.clients.envs.ClientAuthSession;
 import dev.clippy.clients.envs.ClientEnvs;
 import dev.clippy.utils.envmanager.Env;
 
@@ -36,17 +38,26 @@ public final class LinuxClipboardClientApp {
     private final ClipboardReader clipboardReader;
     private final HttpClient httpClient;
     private final URI endpoint;
+    private final String authServerUrl;
     private final String clientId;
-    private final String clientToken;
+    private final ClientAuthSession authSession;
     private String lastSentContent;
     private boolean previousSendFailed;
     private boolean previousReadFailed;
+    private boolean previousAuthFailed;
 
-    private LinuxClipboardClientApp(ClipboardReader clipboardReader, URI endpoint, String clientId, String clientToken) {
+    private LinuxClipboardClientApp(
+            ClipboardReader clipboardReader,
+            URI endpoint,
+            String authServerUrl,
+            String clientId,
+            ClientAuthSession authSession
+    ) {
         this.clipboardReader = clipboardReader;
         this.endpoint = endpoint;
+        this.authServerUrl = authServerUrl;
         this.clientId = clientId;
-        this.clientToken = clientToken;
+        this.authSession = authSession;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
@@ -55,19 +66,33 @@ public final class LinuxClipboardClientApp {
     public static void main(String[] args) throws IOException {
         Env env = ClientEnvs.load();
         URI endpoint = clipboardEndpoint(env.get(ClientEnvs.REMOTE_SERVER_URL));
+        String authServerUrl = env.has(ClientEnvs.AUTH_SERVER_URL) ? env.get(ClientEnvs.AUTH_SERVER_URL) : null;
         String clientId = env.has(ClientEnvs.CLIENT_ID) ? env.get(ClientEnvs.CLIENT_ID) : defaultClientId();
-        String clientToken = env.get(ClientEnvs.CLIENT_TOKEN);
+        String clientSecret = env.has(ClientEnvs.CLIENT_SECRET) ? env.get(ClientEnvs.CLIENT_SECRET) : null;
+        String clientToken = env.has(ClientEnvs.CLIENT_TOKEN) ? env.get(ClientEnvs.CLIENT_TOKEN) : null;
         long pollIntervalMs = env.has(ClientEnvs.CLIPBOARD_POLL_INTERVAL_MS)
                 ? validatePollIntervalMs(env.get(ClientEnvs.CLIPBOARD_POLL_INTERVAL_MS))
                 : 1000L;
         ClipboardReader clipboardReader = createClipboardReader(env);
+        ClientAuthSession authSession = new ClientAuthSession(authServerUrl, clientId, clientSecret, clientToken);
 
-        LinuxClipboardClientApp app = new LinuxClipboardClientApp(clipboardReader, endpoint, clientId, clientToken);
+        if (authSession.canRefresh()) {
+            if (authServerUrl == null) {
+                throw new IllegalStateException("AUTH_SERVER_URL is required when CLIENT_SECRET is set.");
+            }
+            System.out.printf("Refreshing auth token from %s for clientId=%s%n", authServerUrl, clientId);
+            authSession.refresh();
+        } else if (!authSession.hasToken()) {
+            throw new IllegalStateException("Set CLIENT_SECRET for auth login or CLIENT_TOKEN for a static token.");
+        }
+
+        LinuxClipboardClientApp app = new LinuxClipboardClientApp(clipboardReader, endpoint, authServerUrl, clientId, authSession);
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> shutdown(scheduler)));
 
-        System.out.printf("Clippy Linux client started. clientId=%s endpoint=%s pollIntervalMs=%d clipboardBackend=%s%n",
-                clientId, endpoint, pollIntervalMs, clipboardReader.name());
+        System.out.printf("Clippy Linux client started. clientId=%s endpoint=%s authServer=%s pollIntervalMs=%d clipboardBackend=%s tokenSource=%s%n",
+                clientId, endpoint, authServerUrl == null ? "unset" : authServerUrl, pollIntervalMs, clipboardReader.name(),
+                authSession.canRefresh() ? "CLIENT_SECRET" : "CLIENT_TOKEN");
         scheduler.scheduleWithFixedDelay(app::pollAndSendIfChanged, 0, pollIntervalMs, TimeUnit.MILLISECONDS);
     }
 
@@ -86,23 +111,40 @@ public final class LinuxClipboardClientApp {
         }
 
         try {
-            int statusCode = send(content);
+            int statusCode = sendWithAuthRetry(content);
             if (statusCode >= 200 && statusCode < 300) {
                 lastSentContent = content;
                 previousSendFailed = false;
+                previousAuthFailed = false;
                 System.out.printf("Sent clipboard change. chars=%d%n", content.length());
+            } else if (statusCode == 401) {
+                logAuthFailure("Remote server rejected the bearer token with HTTP 401.");
             } else {
                 logSendFailure("Server responded with HTTP " + statusCode);
             }
         } catch (IOException exception) {
             logSendFailure(exception.getMessage());
+        } catch (AuthClientException exception) {
+            logAuthFailure(authFailureMessage(exception));
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             logSendFailure("Interrupted while sending clipboard content.");
         }
     }
 
-    private int send(String content) throws IOException, InterruptedException {
+    private int sendWithAuthRetry(String content) throws IOException, InterruptedException {
+        int statusCode = send(content, authSession.token());
+        if (statusCode != 401 || !authSession.canRefresh()) {
+            return statusCode;
+        }
+
+        logAuthFailure("Remote server rejected the bearer token with HTTP 401. Refreshing from auth server.");
+        authSession.refresh();
+        previousAuthFailed = false;
+        return send(content, authSession.token());
+    }
+
+    private int send(String content, String clientToken) throws IOException, InterruptedException {
         String json = """
                 {"clientId":"%s","content":"%s","timestamp":"%s"}"""
                 .formatted(jsonEscape(clientId), jsonEscape(content), Instant.now());
@@ -119,16 +161,35 @@ public final class LinuxClipboardClientApp {
 
     private void logSendFailure(String message) {
         if (!previousSendFailed) {
-            System.err.printf("Clipboard send failed: %s%n", message);
+            System.err.printf("Clipboard send failed. clientId=%s endpoint=%s error=%s%n", clientId, endpoint, message);
             previousSendFailed = true;
         }
     }
 
     private void logReadFailure(String message) {
         if (!previousReadFailed) {
-            System.err.printf("Clipboard read failed: %s%n", message);
+            System.err.printf("Clipboard read failed. clientId=%s backend=%s error=%s%n", clientId, clipboardReader.name(), message);
             previousReadFailed = true;
         }
+    }
+
+    private void logAuthFailure(String message) {
+        if (!previousAuthFailed) {
+            System.err.printf("Auth refresh failed. clientId=%s authServer=%s error=%s%n", clientId, authServerUrl, message);
+            previousAuthFailed = true;
+        }
+    }
+
+    private static String authFailureMessage(AuthClientException exception) {
+        String message = exception.getMessage();
+        if (message == null || message.isBlank()) {
+            return exception.getClass().getSimpleName();
+        }
+        Throwable cause = exception.getCause();
+        if (cause == null || cause.getMessage() == null || cause.getMessage().isBlank()) {
+            return message;
+        }
+        return message + ": " + cause.getMessage();
     }
 
     private static ClipboardReader createClipboardReader(Env env) {
