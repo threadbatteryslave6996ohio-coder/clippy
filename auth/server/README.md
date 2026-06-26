@@ -70,6 +70,8 @@ AUTH_SERVER_PORT=8081
 AUTH_LOGGING_FILE_NAME=logs/clippy-auth-server.log
 ```
 
+For Azure, point `AUTH_DATASOURCE_URL` at the `auth` database on the deployed PostgreSQL server.
+
 The service uses Hibernate `ddl-auto: update`, so it creates or updates the local schema on startup. The persistent tables are:
 
 - `client_identities`

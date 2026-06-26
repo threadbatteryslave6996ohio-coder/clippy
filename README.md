@@ -61,7 +61,7 @@ java -jar server/target/clippy-server-0.1.0-SNAPSHOT.jar
 
 The auth server listens on `http://localhost:8081` and the app server listens on `http://localhost:8080` by default. Both servers load the repository root `.env` through the shared env manager, then overlay real process environment variables.
 
-The auth server uses `AUTH_DATASOURCE_*` values and the app server uses `SPRING_DATASOURCE_*` values. Set those to your Azure PostgreSQL connection details in `.env` or in the shell before running Maven.
+The auth server uses `AUTH_DATASOURCE_*` values and the app server uses `SPRING_DATASOURCE_*` values. Set those to your Azure PostgreSQL connection details in `.env` or in the shell before running Maven. Use separate database names if you want isolation between auth and clipboard data.
 
 ```text
 AUTH_DATASOURCE_URL=jdbc:postgresql://localhost:5433/auth
