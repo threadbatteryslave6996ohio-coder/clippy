@@ -17,7 +17,7 @@ target/
 *.jar
 *.war
 *.ear
-
+clippy-offline-clipboard.json
 # Gradle / Android
 .gradle/
 build/
