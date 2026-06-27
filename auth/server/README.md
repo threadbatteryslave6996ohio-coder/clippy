@@ -28,11 +28,9 @@ mvn -version
 
 ## Start Locally
 
-From the repository root:
+Start the auth database on port `5433` using your preferred local PostgreSQL setup, then run the server:
 
 ```bash
-cd ~/Desktop/clippy
-docker compose -f auth/server/docker-compose.yml up -d auth-postgres
 mvn -pl auth/server spring-boot:run
 ```
 
@@ -50,7 +48,7 @@ java -jar auth/server/target/clippy-auth-server-0.1.0-SNAPSHOT.jar
 
 The auth server loads configuration from a `.env` file if one is present in the current directory or any parent directory, then overlays real process environment variables. The shared env manager handles this loading.
 
-The default local configuration matches `docker-compose.yml`.
+The default local configuration matches the local development settings.
 
 | Environment variable | Default | Purpose |
 | --- | --- | --- |

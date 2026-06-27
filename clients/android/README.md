@@ -17,12 +17,7 @@ Open `clients/android` in Android Studio and run the `app` configuration.
 
 Start PostgreSQL, the auth server, and the app server from the repository root before sending clipboard entries:
 
-```bash
-docker compose up -d postgres
-mvn -pl auth/server spring-boot:run
-mvn -pl server -am package
-java -jar server/target/clippy-server-0.1.0-SNAPSHOT.jar
-```
+Start the auth database on port `5433` and the app database on port `5432` using your preferred local PostgreSQL setup, then run the auth server and app server.
 
 Create a client identity and login with the auth server:
 

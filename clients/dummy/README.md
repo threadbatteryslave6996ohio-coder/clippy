@@ -18,12 +18,7 @@ From the repository root:
 
    The dummy client sends requests to the same `/clipboard` endpoint as the desktop and Android clients. For local development, the server normally runs at `http://localhost:8080`.
 
-   ```bash
-   docker compose up -d postgres
-   mvn -pl auth/server spring-boot:run
-   mvn -pl server -am package
-   java -jar server/target/clippy-server-0.1.0-SNAPSHOT.jar
-   ```
+   Start the auth database on port `5433` and the app database on port `5432` using your preferred local PostgreSQL setup, then run the auth server and app server.
 
 2. Create a client identity and login.
 
@@ -51,7 +46,7 @@ From the repository root:
 
    `REMOTE_SERVER_URL` is required. It may be either the server base URL, such as `http://localhost:8080`, or the full endpoint, such as `http://localhost:8080/clipboard`.
 
-   `CLIENT_TOKEN` is required. `CLIENT_ID` is optional and defaults to `dummy-` plus the machine hostname.
+   `CLIENT_TOKEN` is required. `CLIENT_ID` is optional and defaults to `dummy-` plus the machine hostname, with a random fallback if hostname lookup fails.
 
    Shell environment variables override values from `.env` when both are set.
 

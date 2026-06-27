@@ -18,6 +18,9 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 
@@ -27,6 +30,18 @@ import static org.mockito.Mockito.when;
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class ClipboardEntryHttpIntegrationTest {
+    private static final Path customLoggerDir;
+    private static final String originalLoggerDir = System.getProperty("custom.logger.dir");
+
+    static {
+        try {
+            customLoggerDir = Files.createTempDirectory("clippy-server-logs-");
+            System.setProperty("custom.logger.dir", customLoggerDir.toString());
+        } catch (IOException exception) {
+            throw new ExceptionInInitializerError(exception);
+        }
+    }
+
     @Container
     static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
@@ -55,8 +70,17 @@ class ClipboardEntryHttpIntegrationTest {
         repository.deleteAll();
     }
 
+    @org.junit.jupiter.api.AfterAll
+    static void restoreLoggerDir() {
+        if (originalLoggerDir == null) {
+            System.clearProperty("custom.logger.dir");
+        } else {
+            System.setProperty("custom.logger.dir", originalLoggerDir);
+        }
+    }
+
     @Test
-    void createsClipboardEntryFromHttpRequestAndPersistsItInPostgres() {
+    void createsClipboardEntryFromHttpRequestAndPersistsItInPostgres() throws IOException {
         Instant timestamp = Instant.parse("2026-06-23T12:00:00Z");
         String json = """
                 {
@@ -92,6 +116,10 @@ class ClipboardEntryHttpIntegrationTest {
         assertThat(saved.getClientId()).isEqualTo("android-pixel-8");
         assertThat(saved.getContent()).isEqualTo("clipboard text");
         assertThat(saved.getTimestamp()).isEqualTo(timestamp);
+
+        String logContent = Files.readString(customLoggerDir.resolve("clippy-server.txt"));
+        assertThat(logContent).contains("Added clipboard entry for clientId=android-pixel-8");
+        assertThat(logContent).contains("entryId=" + saved.getId());
     }
 
     @Test

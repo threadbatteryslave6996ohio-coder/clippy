@@ -1,5 +1,6 @@
 package dev.clippy.server;
 
+import dev.clippy.utils.logger.CustomLogger;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpHeaders;
@@ -14,6 +15,8 @@ import java.time.Instant;
 
 @RestController
 public class ClipboardEntryController {
+    private static final CustomLogger LOGGER = new CustomLogger("clippy-server");
+
     private final ClipboardEntryRepository repository;
     private final AuthTokenVerifier authTokenVerifier;
 
@@ -39,7 +42,18 @@ public class ClipboardEntryController {
                 request.content(),
                 timestamp
         ));
+        logClipboardEntrySaved(saved);
         return new ClipboardEntryResponse(saved.getId(), saved.getClientId(), saved.getTimestamp());
+    }
+
+    private static void logClipboardEntrySaved(ClipboardEntry saved) {
+        try {
+            LOGGER.log("Added clipboard entry for clientId=" + saved.getClientId()
+                    + ", entryId=" + saved.getId()
+                    + " at " + saved.getTimestamp());
+        } catch (RuntimeException exception) {
+            // Audit logging is best-effort; a logging failure must not reject the write.
+        }
     }
 
     private static String bearerToken(String authorization) {

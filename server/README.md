@@ -28,13 +28,7 @@ export PATH="$JAVA_HOME/bin:$PATH"
 
 ## Start Locally
 
-From the repository root at `~/Desktop/clippy`, start PostgreSQL for the app server and auth server:
-
-```bash
-cd ~/Desktop/clippy
-docker compose -f server/docker-compose.yml up -d postgres
-docker compose -f auth/server/docker-compose.yml up -d auth-postgres
-```
+Start the app database on port `5432` and the auth database on port `5433` using your preferred local PostgreSQL setup.
 
 Run the auth server from the repository root in one terminal:
 
@@ -65,7 +59,7 @@ The app server listens on `http://localhost:8080` by default. The auth server li
 
 The server loads configuration from a `.env` file in the current directory or any parent directory, then overlays real process environment variables. The shared env manager handles this loading.
 
-The default local configuration matches `server/docker-compose.yml`:
+The default local configuration matches the local development settings:
 
 ```text
 SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/clippy
@@ -96,6 +90,14 @@ Authorization: Bearer <client-token>
 `timestamp` is optional. When it is omitted, the server stores the current time.
 
 The bearer token must have been issued by the auth server for the same `clientId` in the JSON body.
+
+## Logging
+
+The app server writes its normal Spring Boot logs to `LOGGING_FILE_NAME` and also writes a custom audit log file named `clippy-server.txt` in the same directory by default.
+
+Each successful `POST /clipboard` request records a line noting the `clientId`, generated entry id, and timestamp. Raw clipboard content is not written to the custom log.
+
+The custom audit log is best-effort. If it cannot be written, the clipboard insert still succeeds.
 
 ## Tests
 
