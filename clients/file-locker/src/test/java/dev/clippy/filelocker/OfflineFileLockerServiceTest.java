@@ -3,19 +3,24 @@ package dev.clippy.filelocker;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.net.StandardProtocolFamily;
+import java.net.UnixDomainSocketAddress;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OfflineFileLockerServiceTest {
@@ -67,6 +72,7 @@ class OfflineFileLockerServiceTest {
             assertEquals(entryCount, content.split("\\{\\\"value\\\":", -1).length - 1);
 
             client.append(log, "{\"value\":40}");
+            client.append(log, "{\"value\":40}");
             assertFalse(client.clearIfUnchanged(log, content));
             String updatedContent = client.read(log);
             assertEquals(entryCount + 1, updatedContent.split("\\{\\\"value\\\":", -1).length - 1);
@@ -75,6 +81,27 @@ class OfflineFileLockerServiceTest {
         } finally {
             service.close();
             serviceThread.join(Duration.ofSeconds(5));
+        }
+    }
+
+    @Test
+    void timesOutWhenFileLockerStopsResponding() throws Exception {
+        Path socket = tempDir.resolve("unresponsive.sock");
+        try (ServerSocketChannel server = ServerSocketChannel.open(StandardProtocolFamily.UNIX)) {
+            server.bind(UnixDomainSocketAddress.of(socket));
+            Thread unresponsiveServer = Thread.ofVirtual().start(() -> {
+                try (SocketChannel ignored = server.accept()) {
+                    Thread.sleep(Duration.ofSeconds(5));
+                } catch (Exception ignored) {
+                }
+            });
+
+            OfflineFileLockerClient client = new OfflineFileLockerClient(socket, Duration.ofMillis(100));
+            java.io.IOException exception = assertThrows(java.io.IOException.class, client::ping);
+
+            assertTrue(exception.getMessage().contains("timed out"));
+            unresponsiveServer.interrupt();
+            unresponsiveServer.join(Duration.ofSeconds(1));
         }
     }
 

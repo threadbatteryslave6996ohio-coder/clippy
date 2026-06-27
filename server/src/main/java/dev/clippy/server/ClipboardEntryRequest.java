@@ -1,5 +1,6 @@
 package dev.clippy.server;
 
+import dev.clippy.utils.clipboard.ClipboardLimits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -12,7 +13,7 @@ public record ClipboardEntryRequest(
         String clientId,
 
         @NotNull
-        @Size(max = 1_000_000)
+        @Size(max = ClipboardLimits.MAX_CONTENT_CHARACTERS)
         String content,
 
         Instant timestamp

@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @RestController
@@ -40,25 +41,16 @@ public class ClipboardEntryController {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid client token.");
         }
 
-        Instant requestedTimestamp = request.timestamp();
-        if (requestedTimestamp != null) {
-            ClipboardEntry existing = repository
-                    .findFirstByClientIdAndTimestampAndContentOrderByIdAsc(
-                            request.clientId(), requestedTimestamp, request.content())
-                    .orElse(null);
-            if (existing != null) {
-                return response(existing);
-            }
+        Instant timestamp = (request.timestamp() == null ? Instant.now() : request.timestamp())
+                .truncatedTo(ChronoUnit.MICROS);
+        ClipboardEntry existing = repository
+                .findFirstByClientIdAndTimestampAndContentOrderByIdAsc(
+                        request.clientId(), timestamp, request.content())
+                .orElse(null);
+        if (existing != null) {
+            return response(existing);
         }
 
-        ClipboardEntry latest = repository.findFirstByClientIdOrderByIdDesc(request.clientId()).orElse(null);
-        if (latest != null
-                && latest.getContent().equals(request.content())
-                && (requestedTimestamp == null || !requestedTimestamp.isBefore(latest.getTimestamp()))) {
-            return response(latest);
-        }
-
-        Instant timestamp = requestedTimestamp == null ? Instant.now() : requestedTimestamp;
         ClipboardEntry saved = repository.save(new ClipboardEntry(
                 request.clientId(),
                 request.content(),

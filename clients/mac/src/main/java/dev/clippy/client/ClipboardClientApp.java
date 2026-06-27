@@ -5,6 +5,7 @@ import dev.clippy.clients.envs.ClientAuthSession;
 import dev.clippy.clients.envs.ClientEnvs;
 import dev.clippy.filelocker.OfflineFileLockerClient;
 import dev.clippy.utils.envmanager.Env;
+import dev.clippy.utils.clipboard.ClipboardLimits;
 
 import java.awt.HeadlessException;
 import java.awt.Toolkit;
@@ -41,6 +42,7 @@ public final class ClipboardClientApp {
     private boolean previousReadFailed;
     private boolean previousSendFailed;
     private boolean previousAuthFailed;
+    private ClipboardPayload pendingOfflinePayload;
 
     private ClipboardClientApp(
             Clipboard clipboard,
@@ -119,7 +121,22 @@ public final class ClipboardClientApp {
             return;
         }
 
+        if (pendingOfflinePayload != null) {
+            if (!appendPendingOffline()) {
+                return;
+            }
+            if (Objects.equals(content, lastSentContent)) {
+                return;
+            }
+        }
+
         if (content == null || Objects.equals(content, lastSentContent)) {
+            return;
+        }
+        if (!ClipboardLimits.isWithinContentLimit(content)) {
+            lastSentContent = content;
+            System.err.printf("Skipping oversized clipboard change. chars=%d maxChars=%d%n",
+                    content.length(), ClipboardLimits.MAX_CONTENT_CHARACTERS);
             return;
         }
 
@@ -211,14 +228,26 @@ public final class ClipboardClientApp {
     private void logOffline(ClipboardPayload payload, String message) {
         String failureMessage = message == null || message.isBlank() ? "unknown error" : message;
         System.err.printf("Cannot reach remote server. clientId=%s endpoint=%s error=%s%n", clientId, endpoint, failureMessage);
+        pendingOfflinePayload = payload;
+        appendPendingOffline();
+    }
+
+    private boolean appendPendingOffline() {
+        ClipboardPayload payload = pendingOfflinePayload;
+        if (payload == null) {
+            return true;
+        }
         try {
             fileLocker.append(OFFLINE_LOG_PATH, payload.toJson());
             lastSentContent = payload.content();
+            pendingOfflinePayload = null;
             System.err.printf("Logged clipboard message to %s. clientId=%s chars=%d%n",
                     OFFLINE_LOG_PATH.toAbsolutePath(), clientId, payload.content().length());
+            return true;
         } catch (IOException exception) {
             System.err.printf("Clipboard send failed and local JSON log failed. clientId=%s error=%s%n",
                     clientId, exception.getMessage());
+            return false;
         }
     }
 

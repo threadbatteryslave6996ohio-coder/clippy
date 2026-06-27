@@ -118,6 +118,9 @@ public final class OfflineFileLockerService implements AutoCloseable {
                 updated = "[\n  " + jsonEntry + "\n]\n";
             } else {
                 String existing = Files.readString(path, StandardCharsets.UTF_8);
+                if (containsExactEntry(existing, jsonEntry)) {
+                    return;
+                }
                 int arrayEnd = existing.lastIndexOf(']');
                 if (arrayEnd < 0) {
                     throw new IOException("Offline JSON log is not a JSON array: " + path);
@@ -130,6 +133,11 @@ public final class OfflineFileLockerService implements AutoCloseable {
         } finally {
             lock.unlock();
         }
+    }
+
+    private static boolean containsExactEntry(String array, String jsonEntry) {
+        String framedEntry = "\n  " + jsonEntry;
+        return array.contains(framedEntry + ",\n") || array.contains(framedEntry + "\n]");
     }
 
     private boolean clearIfUnchangedLocked(Path path, String expectedContent) throws IOException {

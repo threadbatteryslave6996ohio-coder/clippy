@@ -52,3 +52,8 @@ used for Linux-client appends. It never reads the file directly, so an append
 cannot overlap a snapshot read. It only contacts the server when the JSON
 snapshot changes. Failed reads and sync attempts are retried on the next
 configured check.
+
+Clipboard values over 1,000,000 characters are not uploaded. Current clients
+do not write them to the offline log; oversized entries left by an older client
+are excluded before client-id validation, ignored, and removed when the snapshot
+is cleared.

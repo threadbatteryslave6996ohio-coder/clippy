@@ -8,14 +8,29 @@ import java.net.UnixDomainSocketAddress;
 import java.nio.channels.Channels;
 import java.nio.channels.SocketChannel;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public final class OfflineFileLockerClient {
     public static final Path DEFAULT_SOCKET_PATH = Path.of("/tmp/clippy-offline-file-locker.sock");
+    private static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(10);
 
     private final UnixDomainSocketAddress address;
+    private final Duration requestTimeout;
 
     public OfflineFileLockerClient(Path socketPath) {
+        this(socketPath, DEFAULT_REQUEST_TIMEOUT);
+    }
+
+    OfflineFileLockerClient(Path socketPath, Duration requestTimeout) {
+        if (requestTimeout.isZero() || requestTimeout.isNegative()) {
+            throw new IllegalArgumentException("File-locker request timeout must be positive.");
+        }
         this.address = UnixDomainSocketAddress.of(socketPath.toAbsolutePath().normalize());
+        this.requestTimeout = requestTimeout;
     }
 
     public String read(Path path) throws IOException {
@@ -35,6 +50,33 @@ public final class OfflineFileLockerClient {
     }
 
     private String request(int operation, Path path, String content) throws IOException {
+        FutureTask<String> request = new FutureTask<>(() -> requestBlocking(operation, path, content));
+        Thread.ofVirtual().name("clippy-file-locker-request").start(request);
+        try {
+            return request.get(requestTimeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException exception) {
+            request.cancel(true);
+            throw new IOException("File-locker request timed out after " + requestTimeout.toMillis() + " ms.", exception);
+        } catch (InterruptedException exception) {
+            request.cancel(true);
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while waiting for the file-locker service.", exception);
+        } catch (ExecutionException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof IOException ioException) {
+                throw ioException;
+            }
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            if (cause instanceof Error error) {
+                throw error;
+            }
+            throw new IOException("File-locker request failed.", cause);
+        }
+    }
+
+    private String requestBlocking(int operation, Path path, String content) throws IOException {
         try (SocketChannel channel = SocketChannel.open(StandardProtocolFamily.UNIX)) {
             channel.connect(address);
             DataOutputStream output = new DataOutputStream(Channels.newOutputStream(channel));

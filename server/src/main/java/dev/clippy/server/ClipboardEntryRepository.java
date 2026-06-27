@@ -10,8 +10,6 @@ import java.util.List;
 import java.util.Optional;
 
 public interface ClipboardEntryRepository extends JpaRepository<ClipboardEntry, Long> {
-    Optional<ClipboardEntry> findFirstByClientIdOrderByIdDesc(String clientId);
-
     Optional<ClipboardEntry> findFirstByClientIdAndTimestampAndContentOrderByIdAsc(
             String clientId,
             Instant timestamp,

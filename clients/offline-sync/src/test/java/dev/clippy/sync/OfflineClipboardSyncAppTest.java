@@ -3,6 +3,7 @@ package dev.clippy.sync;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import dev.clippy.clients.envs.ClientAuthSession;
+import dev.clippy.utils.clipboard.ClipboardLimits;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -38,6 +39,43 @@ class OfflineClipboardSyncAppTest {
         assertEquals(1, records.size());
         assertEquals("offline text", records.getFirst().content());
         assertEquals(Instant.parse("2026-06-23T12:00:00Z"), records.getFirst().timestamp());
+    }
+
+    @Test
+    void skipsLegacyOversizedClipboardEntriesWithoutContactingServer() throws Exception {
+        Path log = tempDir.resolve("offline.json");
+        String content = """
+                [{"clientId":"client-a","content":"%s","timestamp":"2026-06-23T12:00:00Z"}]
+                """.formatted("x".repeat(ClipboardLimits.MAX_CONTENT_CHARACTERS + 1));
+
+        List<OfflineClipboardSyncApp.ClipboardRecord> records =
+                OfflineClipboardSyncApp.parseClipboardRecords(content, log);
+        OfflineClipboardSyncApp app = new OfflineClipboardSyncApp(
+                URI.create("http://localhost:1/clipboard"),
+                "client-a",
+                new ClientAuthSession(null, "client-a", null, "token-a")
+        );
+
+        assertEquals(1, records.size());
+        assertEquals(new OfflineClipboardSyncApp.SyncResult(0, 0), app.sync(records));
+    }
+
+    @Test
+    void excludesOversizedOldClientBeforeOwnershipValidation() throws Exception {
+        List<OfflineClipboardSyncApp.ClipboardRecord> records = List.of(
+                new OfflineClipboardSyncApp.ClipboardRecord(
+                        "old-client",
+                        "x".repeat(ClipboardLimits.MAX_CONTENT_CHARACTERS + 1),
+                        Instant.parse("2026-06-23T11:00:00Z")),
+                new OfflineClipboardSyncApp.ClipboardRecord(
+                        "client-a", "valid", Instant.parse("2026-06-23T12:00:00Z"))
+        );
+
+        List<OfflineClipboardSyncApp.ClipboardRecord> syncable =
+                OfflineClipboardSyncApp.syncableRecords(records, false);
+
+        assertEquals(1, syncable.size());
+        assertEquals("client-a", syncable.getFirst().clientId());
     }
 
     @Test

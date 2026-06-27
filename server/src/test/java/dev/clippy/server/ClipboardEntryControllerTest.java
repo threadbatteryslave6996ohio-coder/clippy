@@ -80,15 +80,15 @@ class ClipboardEntryControllerTest {
     }
 
     @Test
-    void doesNotSaveWhenLatestEntryForClientHasSameContent() {
-        ClipboardEntry latest = new ClipboardEntry(
+    void doesNotSaveWhenContentAndTimestampBothMatch() {
+        ClipboardEntry existing = new ClipboardEntry(
                 "android-pixel-8",
                 "clipboard text",
                 Instant.parse("2026-06-23T12:00:00Z")
         );
-        setId(latest, 41L);
+        setId(existing, 41L);
         AtomicInteger saves = new AtomicInteger();
-        ClipboardEntryRepository repository = clipboardEntryRepository(List.of(latest), saves);
+        ClipboardEntryRepository repository = clipboardEntryRepository(List.of(existing), saves);
         AuthTokenVerifier authTokenVerifier = (clientId, token) -> "android-pixel-8".equals(clientId)
                 && "valid-token".equals(token);
 
@@ -96,7 +96,7 @@ class ClipboardEntryControllerTest {
                 new ClipboardEntryRequest(
                         "android-pixel-8",
                         "clipboard text",
-                        Instant.parse("2026-06-23T12:01:00Z")
+                        Instant.parse("2026-06-23T12:00:00Z")
                 ),
                 "Bearer valid-token"
         );
@@ -107,7 +107,7 @@ class ClipboardEntryControllerTest {
     }
 
     @Test
-    void savesWhenLatestEntryForClientHasDifferentContent() {
+    void savesWhenContentDiffers() {
         ClipboardEntry latest = new ClipboardEntry(
                 "android-pixel-8",
                 "old text",
@@ -207,13 +207,6 @@ class ClipboardEntryControllerTest {
             saves.incrementAndGet();
             setId(entry, 42L);
             return entry;
-        }
-
-        if ("findFirstByClientIdOrderByIdDesc".equals(method.getName())) {
-            String clientId = (String) args[0];
-            return entries.stream()
-                    .filter(entry -> entry.getClientId().equals(clientId))
-                    .reduce((first, second) -> second);
         }
 
         if ("findFirstByClientIdAndTimestampAndContentOrderByIdAsc".equals(method.getName())) {

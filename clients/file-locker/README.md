@@ -10,6 +10,9 @@ either the complete old JSON array or the complete new array. The socket and
 offline files are restricted to the owning user where POSIX permissions are
 available.
 
+Repeating an append with an identical JSON object is idempotent, so desktop
+clients can safely retry the exact pending entry after an IPC timeout.
+
 Start the service before either client:
 
 ```bash

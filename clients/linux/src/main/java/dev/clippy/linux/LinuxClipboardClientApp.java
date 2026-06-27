@@ -5,6 +5,7 @@ import dev.clippy.clients.envs.ClientAuthSession;
 import dev.clippy.clients.envs.ClientEnvs;
 import dev.clippy.filelocker.OfflineFileLockerClient;
 import dev.clippy.utils.envmanager.Env;
+import dev.clippy.utils.clipboard.ClipboardLimits;
 
 import java.awt.HeadlessException;
 import java.awt.Toolkit;
@@ -56,6 +57,7 @@ public final class LinuxClipboardClientApp {
     private boolean previousSendFailed;
     private boolean previousReadFailed;
     private boolean previousAuthFailed;
+    private ClipboardPayload pendingOfflinePayload;
 
     private LinuxClipboardClientApp(
             ClipboardReader clipboardReader,
@@ -132,12 +134,27 @@ public final class LinuxClipboardClientApp {
             return;
         }
 
+        if (pendingOfflinePayload != null) {
+            if (!appendPendingOffline()) {
+                return;
+            }
+            if (Objects.equals(content, lastSentContent)) {
+                return;
+            }
+        }
+
         if (content == null || content.isEmpty() || Objects.equals(content, lastSentContent)) {
             return;
         }
+        if (!ClipboardLimits.isWithinContentLimit(content)) {
+            lastSentContent = content;
+            System.err.printf("Skipping oversized clipboard change. chars=%d maxChars=%d%n",
+                    content.length(), ClipboardLimits.MAX_CONTENT_CHARACTERS);
+            return;
+        }
 
+        ClipboardPayload payload = new ClipboardPayload(clientId, content, Instant.now());
         try {
-            ClipboardPayload payload = new ClipboardPayload(clientId, content, Instant.now());
             int statusCode = sendWithAuthRetry(payload);
             if (statusCode >= 200 && statusCode < 300) {
                 lastSentContent = content;
@@ -153,19 +170,19 @@ public final class LinuxClipboardClientApp {
             }
         } catch (IOException exception) {
             logSendFailure(exception.getMessage());
-            logOffline(new ClipboardPayload(clientId, content, Instant.now()), exception.getMessage());
+            logOffline(payload, exception.getMessage());
         } catch (AuthClientException exception) {
             logAuthFailure(authFailureMessage(exception));
-            logOffline(new ClipboardPayload(clientId, content, Instant.now()), authFailureMessage(exception));
+            logOffline(payload, authFailureMessage(exception));
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             logSendFailure("Interrupted while sending clipboard content.");
-            logOffline(new ClipboardPayload(clientId, content, Instant.now()), "Interrupted while sending clipboard content.");
+            logOffline(payload, "Interrupted while sending clipboard content.");
         }
     }
 
     private int sendWithAuthRetry(ClipboardPayload payload) throws IOException, InterruptedException {
-        int statusCode = send(payload.content(), authSession.token());
+        int statusCode = send(payload, authSession.token());
         if (statusCode != 401 || !authSession.canRefresh()) {
             return statusCode;
         }
@@ -180,13 +197,11 @@ public final class LinuxClipboardClientApp {
             logAuthOperation(fileLocker, clientId, authServerUrl, "refresh", "failed", authFailureMessage(exception));
             throw exception;
         }
-        return send(payload.content(), authSession.token());
+        return send(payload, authSession.token());
     }
 
-    private int send(String content, String clientToken) throws IOException, InterruptedException {
-        String json = """
-                {"clientId":"%s","content":"%s","timestamp":"%s"}"""
-                .formatted(jsonEscape(clientId), jsonEscape(content), Instant.now());
+    private int send(ClipboardPayload payload, String clientToken) throws IOException, InterruptedException {
+        String json = payload.toJson();
 
         HttpRequest request = HttpRequest.newBuilder(endpoint)
                 .timeout(Duration.ofSeconds(10))
@@ -222,14 +237,26 @@ public final class LinuxClipboardClientApp {
     private void logOffline(ClipboardPayload payload, String message) {
         String failureMessage = message == null || message.isBlank() ? "unknown error" : message;
         System.err.printf("Cannot reach remote server. clientId=%s endpoint=%s error=%s%n", clientId, endpoint, failureMessage);
+        pendingOfflinePayload = payload;
+        appendPendingOffline();
+    }
+
+    private boolean appendPendingOffline() {
+        ClipboardPayload payload = pendingOfflinePayload;
+        if (payload == null) {
+            return true;
+        }
         try {
             fileLocker.append(OFFLINE_LOG_PATH, payload.toJson());
             lastSentContent = payload.content();
+            pendingOfflinePayload = null;
             System.err.printf("Logged clipboard message to %s. clientId=%s chars=%d%n",
                     OFFLINE_LOG_PATH.toAbsolutePath(), clientId, payload.content().length());
+            return true;
         } catch (IOException exception) {
             System.err.printf("Clipboard send failed and local JSON log failed. clientId=%s error=%s%n",
                     clientId, exception.getMessage());
+            return false;
         }
     }
 

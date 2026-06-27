@@ -94,7 +94,7 @@ class ClipboardEntryHttpIntegrationTest {
     }
 
     @Test
-    void doesNotPersistConsecutiveDuplicateContentForSameClient() throws Exception {
+    void persistsSameContentAtDifferentTimestamps() throws Exception {
         String first = """
                 {
                   "clientId": "android-pixel-8",
@@ -115,8 +115,8 @@ class ClipboardEntryHttpIntegrationTest {
 
         assertThat(firstResponse.statusCode()).isEqualTo(201);
         assertThat(duplicateResponse.statusCode()).isEqualTo(201);
-        assertThat(duplicateResponse.body()).isEqualTo(firstResponse.body());
-        assertThat(repository.findAll()).hasSize(1);
+        assertThat(duplicateResponse.body()).isNotEqualTo(firstResponse.body());
+        assertThat(repository.findAll()).hasSize(2);
     }
 
     @Test
@@ -141,6 +141,26 @@ class ClipboardEntryHttpIntegrationTest {
     }
 
     @Test
+    void deduplicatesNanosecondTimestampAfterDatabasePrecisionNormalization() throws Exception {
+        String entry = """
+                {
+                  "clientId": "android-pixel-8",
+                  "content": "clipboard text",
+                  "timestamp": "2026-06-23T12:00:00.123456789Z"
+                }
+                """;
+
+        HttpResponse<String> firstResponse = post("/clipboard", entry, "valid-token");
+        HttpResponse<String> retryResponse = post("/clipboard", entry, "valid-token");
+
+        assertThat(firstResponse.statusCode()).isEqualTo(201);
+        assertThat(retryResponse.body()).isEqualTo(firstResponse.body());
+        assertThat(repository.findAll()).hasSize(1);
+        assertThat(repository.findAll().getFirst().getTimestamp())
+                .isEqualTo(Instant.parse("2026-06-23T12:00:00.123456Z"));
+    }
+
+    @Test
     void returnsAuthenticatedClientEntriesWithinInclusiveTimeframe() throws Exception {
         repository.save(new ClipboardEntry("android-pixel-8", "before", Instant.parse("2026-06-23T11:59:59Z")));
         repository.save(new ClipboardEntry("android-pixel-8", "from", Instant.parse("2026-06-23T12:00:00Z")));
@@ -156,6 +176,21 @@ class ClipboardEntryHttpIntegrationTest {
         assertThat(response.body()).contains("\"content\":\"from\"");
         assertThat(response.body()).contains("\"content\":\"to\"");
         assertThat(response.body()).doesNotContain("before").doesNotContain("private");
+    }
+
+    @Test
+    void rejectsTimeframeQueryWithoutBearerToken() throws Exception {
+        repository.save(new ClipboardEntry(
+                "android-pixel-8", "private", Instant.parse("2026-06-23T12:00:00Z")));
+
+        HttpResponse<String> response = get(
+                "/clipboard?clientId=android-pixel-8&from=2026-06-23T12%3A00%3A00Z"
+                        + "&to=2026-06-23T13%3A00%3A00Z",
+                null
+        );
+
+        assertThat(response.statusCode()).isEqualTo(401);
+        assertThat(response.body()).doesNotContain("private");
     }
 
     @Test
@@ -197,10 +232,13 @@ class ClipboardEntryHttpIntegrationTest {
     }
 
     private HttpResponse<String> get(String path, String bearerToken) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:%d%s".formatted(port, path)))
-                .header("Authorization", "Bearer " + bearerToken)
-                .GET()
-                .build();
+        HttpRequest.Builder builder = HttpRequest.newBuilder(
+                        URI.create("http://localhost:%d%s".formatted(port, path)))
+                .GET();
+        if (bearerToken != null) {
+            builder.header("Authorization", "Bearer " + bearerToken);
+        }
+        HttpRequest request = builder.build();
         return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
     }
 

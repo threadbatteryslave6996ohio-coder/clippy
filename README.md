@@ -225,6 +225,9 @@ parameters provide cursor pagination; both cursor parameters must be supplied
 together. Clipboard content is limited to 1,000,000 characters. Run the syncer
 with `./scripts/sync-offline-client.sh`.
 
+Desktop clients skip clipboard values above that limit without sending them or
+writing them to the offline JSON log.
+
 ## Tests
 
 Run the Maven tests:

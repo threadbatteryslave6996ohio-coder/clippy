@@ -7,6 +7,7 @@ import dev.clippy.clients.envs.ClientAuthSession;
 import dev.clippy.clients.envs.ClientEnvs;
 import dev.clippy.filelocker.OfflineFileLockerClient;
 import dev.clippy.utils.envmanager.Env;
+import dev.clippy.utils.clipboard.ClipboardLimits;
 
 import java.io.IOException;
 import java.net.URI;
@@ -58,11 +59,12 @@ public final class OfflineClipboardSyncApp {
         boolean clientIdConfigured = env.has(ClientEnvs.CLIENT_ID);
         ClipboardSnapshot initialSnapshot = awaitInitialSnapshot(
                 recordSource, !clientIdConfigured, syncInterval, Thread::sleep);
+        List<ClipboardRecord> initialSyncableRecords = syncableRecords(initialSnapshot.records(), false);
 
         String configuredClientId = clientIdConfigured
                 ? env.get(ClientEnvs.CLIENT_ID)
-                : singleClientId(initialSnapshot.records());
-        ensureRecordsBelongToClient(initialSnapshot.records(), configuredClientId);
+                : singleClientId(initialSyncableRecords);
+        ensureRecordsBelongToClient(initialSyncableRecords, configuredClientId);
 
         String authServerUrl = env.has(ClientEnvs.AUTH_SERVER_URL) ? env.get(ClientEnvs.AUTH_SERVER_URL) : null;
         String clientSecret = env.has(ClientEnvs.CLIENT_SECRET) ? env.get(ClientEnvs.CLIENT_SECRET) : null;
@@ -90,7 +92,7 @@ public final class OfflineClipboardSyncApp {
         while (true) {
             try {
                 ClipboardSnapshot snapshot = recordSource.read();
-                if (!requireRecords || !snapshot.records().isEmpty()) {
+                if (!requireRecords || !syncableRecords(snapshot.records(), false).isEmpty()) {
                     return snapshot;
                 }
                 System.out.printf("Offline clipboard file is empty; waiting %d minutes to derive CLIENT_ID.%n",
@@ -146,6 +148,7 @@ public final class OfflineClipboardSyncApp {
     }
 
     SyncResult sync(List<ClipboardRecord> records) throws IOException, InterruptedException {
+        records = syncableRecords(records, true);
         if (records.isEmpty()) {
             return new SyncResult(0, 0);
         }
@@ -257,9 +260,10 @@ public final class OfflineClipboardSyncApp {
                 continue;
             }
             String context = "offline entry " + index;
+            String entryContent = requiredText(node, "content");
             records.add(new ClipboardRecord(
                     requiredText(node, "clientId"),
-                    requiredText(node, "content"),
+                    entryContent,
                     parseTimestamp(requiredText(node, "timestamp"), context)
             ));
         }
@@ -272,6 +276,21 @@ public final class OfflineClipboardSyncApp {
             throw new IllegalStateException("CLIENT_ID is required when the offline file contains multiple client IDs.");
         }
         return clientIds.iterator().next();
+    }
+
+    static List<ClipboardRecord> syncableRecords(List<ClipboardRecord> records, boolean logIgnored) {
+        return records.stream()
+                .filter(record -> {
+                    if (ClipboardLimits.isWithinContentLimit(record.content())) {
+                        return true;
+                    }
+                    if (logIgnored) {
+                        System.err.printf("Ignoring oversized offline clipboard entry. chars=%d maxChars=%d%n",
+                                record.content().length(), ClipboardLimits.MAX_CONTENT_CHARACTERS);
+                    }
+                    return false;
+                })
+                .toList();
     }
 
     private static void ensureRecordsBelongToClient(List<ClipboardRecord> records, String expectedClientId) {
