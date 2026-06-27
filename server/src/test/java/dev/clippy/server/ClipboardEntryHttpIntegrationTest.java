@@ -93,6 +93,24 @@ class ClipboardEntryHttpIntegrationTest {
         assertThat(repository.findAll()).isEmpty();
     }
 
+    @Test
+    void returnsAuthenticatedClientEntriesWithinInclusiveTimeframe() throws Exception {
+        repository.save(new ClipboardEntry("android-pixel-8", "before", Instant.parse("2026-06-23T11:59:59Z")));
+        repository.save(new ClipboardEntry("android-pixel-8", "from", Instant.parse("2026-06-23T12:00:00Z")));
+        repository.save(new ClipboardEntry("android-pixel-8", "to", Instant.parse("2026-06-23T13:00:00Z")));
+        repository.save(new ClipboardEntry("other-client", "private", Instant.parse("2026-06-23T12:30:00Z")));
+
+        HttpResponse<String> response = get(
+                "/clipboard?clientId=android-pixel-8&from=2026-06-23T12%3A00%3A00Z&to=2026-06-23T13%3A00%3A00Z",
+                "valid-token"
+        );
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("\"content\":\"from\"");
+        assertThat(response.body()).contains("\"content\":\"to\"");
+        assertThat(response.body()).doesNotContain("before").doesNotContain("private");
+    }
+
     private HttpResponse<String> post(String path, String json, String bearerToken) throws IOException, InterruptedException {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create("http://localhost:%d%s".formatted(port, path)))
                 .header("Content-Type", "application/json")
@@ -102,6 +120,14 @@ class ClipboardEntryHttpIntegrationTest {
         }
 
         return httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private HttpResponse<String> get(String path, String bearerToken) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:%d%s".formatted(port, path)))
+                .header("Authorization", "Bearer " + bearerToken)
+                .GET()
+                .build();
+        return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
     @TestConfiguration

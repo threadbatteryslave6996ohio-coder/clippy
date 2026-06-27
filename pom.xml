@@ -14,8 +14,10 @@
         <module>server</module>
         <module>auth/server</module>
         <module>clients/client-envs</module>
+        <module>clients/file-locker</module>
         <module>clients/mac</module>
         <module>clients/linux</module>
+        <module>clients/offline-sync</module>
         <module>clients/dummy</module>
     </modules>
 

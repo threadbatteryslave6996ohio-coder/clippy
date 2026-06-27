@@ -79,6 +79,14 @@ Use this if you want to log in once and reuse the returned token.
 
 4. Run the client without `CLIENT_SECRET`.
 
+   Start the file-locker in one terminal:
+
+   ```bash
+   ./scripts/start-file-locker.sh
+   ```
+
+   Then start the macOS client in another terminal:
+
    ```bash
    mvn -pl clients/mac package
    java -jar clients/mac/target/clippy-client-0.1.0-SNAPSHOT.jar
@@ -126,7 +134,10 @@ CLIENT_SECRET=change-me-please
 CLIPBOARD_POLL_INTERVAL_MS=1000
 ```
 
-If the client cannot save a clipboard change to the remote server, it appends the same JSON payload to `clippy-offline-clipboard.json` in the directory where the client was launched. It also prints the remote server failure and the local file write to the terminal.
+If the client cannot save a clipboard change to the remote server, it asks the
+file-locker service to append the same JSON payload to
+`clippy-offline-clipboard.json` in the directory where the client was launched.
+The client exits at startup if the file-locker is unavailable.
 
 ## Server Contract
 

@@ -4,14 +4,17 @@ import dev.clippy.utils.logger.CustomLogger;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpHeaders;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.List;
 
 @RestController
 public class ClipboardEntryController {
@@ -44,6 +47,27 @@ public class ClipboardEntryController {
         ));
         logClipboardEntrySaved(saved);
         return new ClipboardEntryResponse(saved.getId(), saved.getClientId(), saved.getTimestamp());
+    }
+
+    @GetMapping("/clipboard")
+    public List<ClipboardEntryDetailsResponse> findWithinTimeframe(
+            @RequestParam("clientId") String clientId,
+            @RequestParam("from") Instant from,
+            @RequestParam("to") Instant to,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization
+    ) {
+        String token = bearerToken(authorization);
+        if (!authTokenVerifier.isTokenValidForClient(clientId, token)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid client token.");
+        }
+        if (from.isAfter(to)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "from must be before or equal to to.");
+        }
+
+        return repository.findByClientIdAndTimestampBetweenOrderByTimestampAscIdAsc(clientId, from, to)
+                .stream()
+                .map(ClipboardEntryDetailsResponse::from)
+                .toList();
     }
 
     private static void logClipboardEntrySaved(ClipboardEntry saved) {

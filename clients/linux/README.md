@@ -38,11 +38,21 @@ Shell environment variables override values from `.env` when both are set.
 Build and start the client with the repository launcher:
 
 ```bash
+./scripts/start-file-locker.sh
+```
+
+Keep the file-locker running, then start the client in another terminal:
+
+```bash
 ./scripts/start-linux-client.sh
 ```
 
 The launcher changes to the repository root before starting Java, so the client
 consistently finds the repository root `.env` file.
+
+Offline clipboard entries are appended through the file-locker service over a
+Unix-domain socket. The client exits at startup if it cannot connect, preventing
+uncoordinated direct writes while a sync is reading the file.
 
 `REMOTE_SERVER_URL` is required. It may be either the server base URL, such as `http://localhost:8080`, or the full endpoint, such as `http://localhost:8080/clipboard`.
 

@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -77,8 +78,32 @@ class ClipboardEntryControllerTest {
         }
     }
 
+    @Test
+    void returnsClipboardEntriesWithinAuthenticatedClientTimeframe() {
+        Instant from = Instant.parse("2026-06-23T12:00:00Z");
+        Instant to = Instant.parse("2026-06-23T13:00:00Z");
+        ClipboardEntryRepository repository = clipboardEntryRepository(List.of(
+                new ClipboardEntry("client-a", "first", from),
+                new ClipboardEntry("client-a", "second", to)
+        ));
+        AuthTokenVerifier authTokenVerifier = (clientId, token) -> "client-a".equals(clientId)
+                && "valid-token".equals(token);
+
+        ClipboardEntryController controller = new ClipboardEntryController(repository, authTokenVerifier);
+        List<ClipboardEntryDetailsResponse> response = controller.findWithinTimeframe(
+                "client-a", from, to, "Bearer valid-token"
+        );
+
+        assertThat(response).extracting(ClipboardEntryDetailsResponse::content)
+                .containsExactly("first", "second");
+    }
+
     private static ClipboardEntryRepository clipboardEntryRepository() {
-        InvocationHandler handler = (proxy, method, args) -> handleRepositoryCall(method, args);
+        return clipboardEntryRepository(List.of());
+    }
+
+    private static ClipboardEntryRepository clipboardEntryRepository(List<ClipboardEntry> entries) {
+        InvocationHandler handler = (proxy, method, args) -> handleRepositoryCall(method, args, entries);
         return (ClipboardEntryRepository) Proxy.newProxyInstance(
                 ClipboardEntryRepository.class.getClassLoader(),
                 new Class<?>[]{ClipboardEntryRepository.class},
@@ -86,7 +111,7 @@ class ClipboardEntryControllerTest {
         );
     }
 
-    private static Object handleRepositoryCall(Method method, Object[] args) {
+    private static Object handleRepositoryCall(Method method, Object[] args, List<ClipboardEntry> entries) {
         if ("save".equals(method.getName()) && args != null && args.length == 1 && args[0] instanceof ClipboardEntry entry) {
             try {
                 java.lang.reflect.Field idField = ClipboardEntry.class.getDeclaredField("id");
@@ -96,6 +121,10 @@ class ClipboardEntryControllerTest {
             } catch (ReflectiveOperationException exception) {
                 throw new IllegalStateException(exception);
             }
+        }
+
+        if ("findByClientIdAndTimestampBetweenOrderByTimestampAscIdAsc".equals(method.getName())) {
+            return entries;
         }
 
         throw new UnsupportedOperationException("Unexpected repository call: " + method.getName());

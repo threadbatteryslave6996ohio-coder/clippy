@@ -91,6 +91,17 @@ Authorization: Bearer <client-token>
 
 The bearer token must have been issued by the auth server for the same `clientId` in the JSON body.
 
+Query all clipboard entries for one client in an inclusive timeframe:
+
+```http
+GET /clipboard?clientId=ubuntu-gnome&from=2026-06-23T12%3A00%3A00Z&to=2026-06-23T13%3A00%3A00Z
+Authorization: Bearer <client-token>
+```
+
+The response is ordered by timestamp and id and includes each entry's `id`,
+`clientId`, `content`, and `timestamp`. The bearer token must belong to the
+requested client. A timeframe with `from` later than `to` returns `400`.
+
 ## Logging
 
 The app server writes its normal Spring Boot logs to `LOGGING_FILE_NAME` and also writes a custom audit log file named `clippy-server.txt` in the same directory by default.

@@ -3,6 +3,7 @@ package dev.clippy.linux;
 import dev.clippy.auth.client.AuthClientException;
 import dev.clippy.clients.envs.ClientAuthSession;
 import dev.clippy.clients.envs.ClientEnvs;
+import dev.clippy.filelocker.OfflineFileLockerClient;
 import dev.clippy.utils.envmanager.Env;
 
 import java.awt.HeadlessException;
@@ -20,7 +21,6 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -43,6 +43,7 @@ public final class LinuxClipboardClientApp {
     private final String authServerUrl;
     private final String clientId;
     private final ClientAuthSession authSession;
+    private final OfflineFileLockerClient fileLocker;
     private String lastSentContent;
     private boolean previousSendFailed;
     private boolean previousReadFailed;
@@ -53,13 +54,15 @@ public final class LinuxClipboardClientApp {
             URI endpoint,
             String authServerUrl,
             String clientId,
-            ClientAuthSession authSession
+            ClientAuthSession authSession,
+            OfflineFileLockerClient fileLocker
     ) {
         this.clipboardReader = clipboardReader;
         this.endpoint = endpoint;
         this.authServerUrl = authServerUrl;
         this.clientId = clientId;
         this.authSession = authSession;
+        this.fileLocker = fileLocker;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
@@ -77,25 +80,31 @@ public final class LinuxClipboardClientApp {
                 : 1000L;
         ClipboardReader clipboardReader = createClipboardReader(env);
         ClientAuthSession authSession = new ClientAuthSession(authServerUrl, clientId, clientSecret, clientToken);
+        Path fileLockerSocket = env.has(ClientEnvs.OFFLINE_FILE_LOCKER_SOCKET)
+                ? Path.of(env.get(ClientEnvs.OFFLINE_FILE_LOCKER_SOCKET))
+                : OfflineFileLockerClient.DEFAULT_SOCKET_PATH;
+        OfflineFileLockerClient fileLocker = new OfflineFileLockerClient(fileLockerSocket);
+        fileLocker.ping();
 
         if (authSession.canRefresh()) {
             if (authServerUrl == null) {
                 throw new IllegalStateException("AUTH_SERVER_URL is required when CLIENT_SECRET is set.");
             }
             System.out.printf("Refreshing auth token from %s for clientId=%s%n", authServerUrl, clientId);
-            logAuthOperation(clientId, authServerUrl, "refresh", "started", "startup token refresh");
+            logAuthOperation(fileLocker, clientId, authServerUrl, "refresh", "started", "startup token refresh");
             try {
                 authSession.refresh();
-                logAuthOperation(clientId, authServerUrl, "refresh", "succeeded", "startup token refresh");
+                logAuthOperation(fileLocker, clientId, authServerUrl, "refresh", "succeeded", "startup token refresh");
             } catch (RuntimeException exception) {
-                logAuthOperation(clientId, authServerUrl, "refresh", "failed", authFailureMessage(exception));
+                logAuthOperation(fileLocker, clientId, authServerUrl, "refresh", "failed", authFailureMessage(exception));
                 throw exception;
             }
         } else if (!authSession.hasToken()) {
             throw new IllegalStateException("Set CLIENT_SECRET for auth login or CLIENT_TOKEN for a static token.");
         }
 
-        LinuxClipboardClientApp app = new LinuxClipboardClientApp(clipboardReader, endpoint, authServerUrl, clientId, authSession);
+        LinuxClipboardClientApp app = new LinuxClipboardClientApp(
+                clipboardReader, endpoint, authServerUrl, clientId, authSession, fileLocker);
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> shutdown(scheduler)));
 
@@ -154,13 +163,13 @@ public final class LinuxClipboardClientApp {
         }
 
         logAuthFailure("Remote server rejected the bearer token with HTTP 401. Refreshing from auth server.");
-        logAuthOperation(clientId, authServerUrl, "refresh", "started", "HTTP 401 token refresh");
+        logAuthOperation(fileLocker, clientId, authServerUrl, "refresh", "started", "HTTP 401 token refresh");
         try {
             authSession.refresh();
             previousAuthFailed = false;
-            logAuthOperation(clientId, authServerUrl, "refresh", "succeeded", "HTTP 401 token refresh");
+            logAuthOperation(fileLocker, clientId, authServerUrl, "refresh", "succeeded", "HTTP 401 token refresh");
         } catch (RuntimeException exception) {
-            logAuthOperation(clientId, authServerUrl, "refresh", "failed", authFailureMessage(exception));
+            logAuthOperation(fileLocker, clientId, authServerUrl, "refresh", "failed", authFailureMessage(exception));
             throw exception;
         }
         return send(payload.content(), authSession.token());
@@ -206,7 +215,7 @@ public final class LinuxClipboardClientApp {
         String failureMessage = message == null || message.isBlank() ? "unknown error" : message;
         System.err.printf("Cannot reach remote server. clientId=%s endpoint=%s error=%s%n", clientId, endpoint, failureMessage);
         try {
-            appendOfflineEntry(payload.toJson());
+            fileLocker.append(OFFLINE_LOG_PATH, payload.toJson());
             lastSentContent = payload.content();
             System.err.printf("Logged clipboard message to %s. clientId=%s chars=%d%n",
                     OFFLINE_LOG_PATH.toAbsolutePath(), clientId, payload.content().length());
@@ -217,6 +226,7 @@ public final class LinuxClipboardClientApp {
     }
 
     private static void logAuthOperation(
+            OfflineFileLockerClient fileLocker,
             String clientId,
             String authServerUrl,
             String operation,
@@ -224,31 +234,12 @@ public final class LinuxClipboardClientApp {
             String message
     ) {
         try {
-            appendOfflineEntry(new AuthLogEntry(clientId, authServerUrl, operation, status, message, Instant.now()).toJson());
+            fileLocker.append(OFFLINE_LOG_PATH,
+                    new AuthLogEntry(clientId, authServerUrl, operation, status, message, Instant.now()).toJson());
         } catch (IOException exception) {
             System.err.printf("Auth operation log failed. clientId=%s authServer=%s error=%s%n",
                     clientId, authServerUrl == null ? "unset" : authServerUrl, exception.getMessage());
         }
-    }
-
-    private static void appendOfflineEntry(String json) throws IOException {
-        String entry = "  " + json;
-        if (!Files.exists(OFFLINE_LOG_PATH) || Files.size(OFFLINE_LOG_PATH) == 0) {
-            Files.writeString(OFFLINE_LOG_PATH, "[\n" + entry + "\n]\n", StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-            return;
-        }
-
-        String existing = Files.readString(OFFLINE_LOG_PATH, StandardCharsets.UTF_8);
-        int arrayEnd = existing.lastIndexOf(']');
-        if (arrayEnd < 0) {
-            throw new IOException("Offline JSON log is not a JSON array: " + OFFLINE_LOG_PATH.toAbsolutePath());
-        }
-
-        String beforeEnd = existing.substring(0, arrayEnd).stripTrailing();
-        String separator = beforeEnd.endsWith("[") ? "\n" : ",\n";
-        Files.writeString(OFFLINE_LOG_PATH, beforeEnd + separator + entry + "\n]\n", StandardCharsets.UTF_8,
-                StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
     }
 
     private static String authFailureMessage(RuntimeException exception) {

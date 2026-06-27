@@ -3,6 +3,7 @@ package dev.clippy.client;
 import dev.clippy.auth.client.AuthClientException;
 import dev.clippy.clients.envs.ClientAuthSession;
 import dev.clippy.clients.envs.ClientEnvs;
+import dev.clippy.filelocker.OfflineFileLockerClient;
 import dev.clippy.utils.envmanager.Env;
 
 import java.awt.HeadlessException;
@@ -17,9 +18,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
@@ -37,6 +36,7 @@ public final class ClipboardClientApp {
     private final String authServerUrl;
     private final String clientId;
     private final ClientAuthSession authSession;
+    private final OfflineFileLockerClient fileLocker;
     private String lastSentContent;
     private boolean previousReadFailed;
     private boolean previousSendFailed;
@@ -47,13 +47,15 @@ public final class ClipboardClientApp {
             URI endpoint,
             String authServerUrl,
             String clientId,
-            ClientAuthSession authSession
+            ClientAuthSession authSession,
+            OfflineFileLockerClient fileLocker
     ) {
         this.clipboard = clipboard;
         this.endpoint = endpoint;
         this.authServerUrl = authServerUrl;
         this.clientId = clientId;
         this.authSession = authSession;
+        this.fileLocker = fileLocker;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
@@ -78,6 +80,11 @@ public final class ClipboardClientApp {
         }
 
         ClientAuthSession authSession = new ClientAuthSession(authServerUrl, clientId, clientSecret, clientToken);
+        Path fileLockerSocket = env.has(ClientEnvs.OFFLINE_FILE_LOCKER_SOCKET)
+                ? Path.of(env.get(ClientEnvs.OFFLINE_FILE_LOCKER_SOCKET))
+                : OfflineFileLockerClient.DEFAULT_SOCKET_PATH;
+        OfflineFileLockerClient fileLocker = new OfflineFileLockerClient(fileLockerSocket);
+        fileLocker.ping();
         if (authSession.canRefresh()) {
             if (authServerUrl == null) {
                 throw new IllegalStateException("AUTH_SERVER_URL is required when CLIENT_SECRET is set.");
@@ -88,7 +95,8 @@ public final class ClipboardClientApp {
             throw new IllegalStateException("Set CLIENT_SECRET for auth login or CLIENT_TOKEN for a static token.");
         }
 
-        ClipboardClientApp app = new ClipboardClientApp(clipboard, endpoint, authServerUrl, clientId, authSession);
+        ClipboardClientApp app = new ClipboardClientApp(
+                clipboard, endpoint, authServerUrl, clientId, authSession, fileLocker);
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> shutdown(scheduler)));
 
@@ -204,7 +212,7 @@ public final class ClipboardClientApp {
         String failureMessage = message == null || message.isBlank() ? "unknown error" : message;
         System.err.printf("Cannot reach remote server. clientId=%s endpoint=%s error=%s%n", clientId, endpoint, failureMessage);
         try {
-            appendOfflinePayload(payload);
+            fileLocker.append(OFFLINE_LOG_PATH, payload.toJson());
             lastSentContent = payload.content();
             System.err.printf("Logged clipboard message to %s. clientId=%s chars=%d%n",
                     OFFLINE_LOG_PATH.toAbsolutePath(), clientId, payload.content().length());
@@ -229,26 +237,6 @@ public final class ClipboardClientApp {
             return message;
         }
         return message + ": " + cause.getMessage();
-    }
-
-    private static void appendOfflinePayload(ClipboardPayload payload) throws IOException {
-        String entry = "  " + payload.toJson();
-        if (!Files.exists(OFFLINE_LOG_PATH) || Files.size(OFFLINE_LOG_PATH) == 0) {
-            Files.writeString(OFFLINE_LOG_PATH, "[\n" + entry + "\n]\n", StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-            return;
-        }
-
-        String existing = Files.readString(OFFLINE_LOG_PATH, StandardCharsets.UTF_8);
-        int arrayEnd = existing.lastIndexOf(']');
-        if (arrayEnd < 0) {
-            throw new IOException("Offline JSON log is not a JSON array: " + OFFLINE_LOG_PATH.toAbsolutePath());
-        }
-
-        String beforeEnd = existing.substring(0, arrayEnd).stripTrailing();
-        String separator = beforeEnd.endsWith("[") ? "\n" : ",\n";
-        Files.writeString(OFFLINE_LOG_PATH, beforeEnd + separator + entry + "\n]\n", StandardCharsets.UTF_8,
-                StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
     }
 
     private static URI clipboardEndpoint(String remoteUrl) {

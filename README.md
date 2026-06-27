@@ -8,6 +8,8 @@ Client-specific docs:
 - Auth client Java module: [auth/client/README.md](auth/client/README.md)
 - macOS: [clients/mac/README.md](clients/mac/README.md)
 - Linux GNOME: [clients/linux/README.md](clients/linux/README.md)
+- Offline sync: [clients/offline-sync/README.md](clients/offline-sync/README.md)
+- Offline file locker: [clients/file-locker/README.md](clients/file-locker/README.md)
 - Dummy: [clients/dummy/README.md](clients/dummy/README.md)
 - Android: [clients/android/README.md](clients/android/README.md)
 
@@ -101,6 +103,13 @@ Then build and start the client:
 
 ```bash
 cd ~/Desktop/clippy
+./scripts/start-file-locker.sh
+```
+
+Keep the file-locker running, then build and start the macOS client in another terminal:
+
+```bash
+cd ~/Desktop/clippy
 mvn -pl clients/mac package
 java -jar clients/mac/target/clippy-client-0.1.0-SNAPSHOT.jar
 ```
@@ -119,7 +128,14 @@ Install a native clipboard helper on Ubuntu GNOME:
 sudo apt install wl-clipboard xclip
 ```
 
-Start the Clippy server first, then run the Linux client from a logged-in graphical session:
+Start the Clippy server first. Then start the local file-locker service:
+
+```bash
+cd ~/Desktop/clippy
+./scripts/start-file-locker.sh
+```
+
+Keep it running and start the Linux client from a logged-in graphical session in another terminal:
 
 ```bash
 cd ~/Desktop/clippy
@@ -200,6 +216,11 @@ Authorization: Bearer <client-token>
 ```
 
 The server returns `201 Created` with the saved entry id, client id, and timestamp.
+
+Authenticated clients can query their clipboard entries over an inclusive
+timeframe with `GET /clipboard?clientId=...&from=...&to=...`. The offline sync
+client uses this endpoint to upload only locally logged entries that are absent
+from the database. Run it with `./scripts/sync-offline-client.sh`.
 
 ## Tests
 
