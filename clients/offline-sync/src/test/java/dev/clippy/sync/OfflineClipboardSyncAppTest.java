@@ -173,12 +173,44 @@ class OfflineClipboardSyncAppTest {
                     }
                     return expectedSnapshot;
                 },
-                false,
                 OfflineClipboardSyncApp.DEFAULT_SYNC_INTERVAL,
                 sleepDurations::add
         );
 
         assertEquals(expectedSnapshot, snapshot);
+        assertEquals(2, attempts[0]);
+        assertEquals(List.of(Duration.ofMinutes(30)), sleepDurations);
+    }
+
+    @Test
+    void waitsForUsableRecordsBeforeDerivingClientId() throws Exception {
+        List<Duration> sleepDurations = new ArrayList<>();
+        List<OfflineClipboardSyncApp.ClipboardRecord> oversizedOnly = List.of(
+                new OfflineClipboardSyncApp.ClipboardRecord(
+                        "client-a",
+                        "x".repeat(ClipboardLimits.MAX_CONTENT_CHARACTERS + 1),
+                        Instant.parse("2026-06-23T16:00:00Z"))
+        );
+        List<OfflineClipboardSyncApp.ClipboardRecord> usableRecords = List.of(
+                new OfflineClipboardSyncApp.ClipboardRecord(
+                        "client-a",
+                        "usable",
+                        Instant.parse("2026-06-23T16:05:00Z"))
+        );
+        int[] attempts = {0};
+
+        OfflineClipboardSyncApp.ClipboardSnapshot snapshot = OfflineClipboardSyncApp.awaitInitialSyncableSnapshot(
+                () -> {
+                    if (attempts[0]++ == 0) {
+                        return new OfflineClipboardSyncApp.ClipboardSnapshot("[oversized]", oversizedOnly);
+                    }
+                    return new OfflineClipboardSyncApp.ClipboardSnapshot("[usable]", usableRecords);
+                },
+                OfflineClipboardSyncApp.DEFAULT_SYNC_INTERVAL,
+                sleepDurations::add
+        );
+
+        assertEquals(new OfflineClipboardSyncApp.ClipboardSnapshot("[usable]", usableRecords), snapshot);
         assertEquals(2, attempts[0]);
         assertEquals(List.of(Duration.ofMinutes(30)), sleepDurations);
     }

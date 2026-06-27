@@ -23,8 +23,9 @@ OFFLINE_SYNC_INTERVAL_MINUTES=30
 
 `CLIENT_TOKEN` can be used instead of `CLIENT_SECRET`. If `CLIENT_ID` is omitted,
 the sync client uses the single client id found in the file. If the file is
-missing, unreadable, or empty at startup, it waits and retries every 30 minutes;
-an empty file must receive an entry before the client id can be derived.
+missing, unreadable, empty, or contains only oversized legacy entries at
+startup, it waits and retries every 30 minutes; a usable clipboard entry must
+appear before the client id can be derived.
 `OFFLINE_SYNC_INTERVAL_MINUTES` is optional, defaults to `30`, and must be at
 least `1`.
 

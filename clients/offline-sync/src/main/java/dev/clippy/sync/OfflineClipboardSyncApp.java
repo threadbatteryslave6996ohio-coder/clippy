@@ -57,8 +57,9 @@ public final class OfflineClipboardSyncApp {
                 ? syncInterval(env.get(ClientEnvs.OFFLINE_SYNC_INTERVAL_MINUTES))
                 : DEFAULT_SYNC_INTERVAL;
         boolean clientIdConfigured = env.has(ClientEnvs.CLIENT_ID);
-        ClipboardSnapshot initialSnapshot = awaitInitialSnapshot(
-                recordSource, !clientIdConfigured, syncInterval, Thread::sleep);
+        ClipboardSnapshot initialSnapshot = clientIdConfigured
+                ? awaitInitialSnapshot(recordSource, syncInterval, Thread::sleep)
+                : awaitInitialSyncableSnapshot(recordSource, syncInterval, Thread::sleep);
         List<ClipboardRecord> initialSyncableRecords = syncableRecords(initialSnapshot.records(), false);
 
         String configuredClientId = clientIdConfigured
@@ -86,21 +87,28 @@ public final class OfflineClipboardSyncApp {
                 initialSnapshot, syncInterval, Thread::sleep);
     }
 
-    static ClipboardSnapshot awaitInitialSnapshot(RecordSource recordSource, boolean requireRecords,
-                                                   Duration interval, Sleeper sleeper)
+    static ClipboardSnapshot awaitInitialSnapshot(RecordSource recordSource, Duration interval, Sleeper sleeper)
             throws InterruptedException {
         while (true) {
             try {
-                ClipboardSnapshot snapshot = recordSource.read();
-                if (!requireRecords || !syncableRecords(snapshot.records(), false).isEmpty()) {
-                    return snapshot;
-                }
-                System.out.printf("Offline clipboard file is empty; waiting %d minutes to derive CLIENT_ID.%n",
-                        interval.toMinutes());
+                return recordSource.read();
             } catch (IOException | RuntimeException exception) {
                 System.err.printf("Could not read initial offline clipboard file; will retry in %d minutes: %s%n",
                         interval.toMinutes(), exception.getMessage());
             }
+            sleeper.sleep(interval);
+        }
+    }
+
+    static ClipboardSnapshot awaitInitialSyncableSnapshot(RecordSource recordSource, Duration interval, Sleeper sleeper)
+            throws InterruptedException {
+        while (true) {
+            ClipboardSnapshot snapshot = awaitInitialSnapshot(recordSource, interval, sleeper);
+            if (!syncableRecords(snapshot.records(), false).isEmpty()) {
+                return snapshot;
+            }
+            System.out.printf("Offline clipboard file has no usable clipboard entries yet; waiting %d minutes to derive CLIENT_ID.%n",
+                    interval.toMinutes());
             sleeper.sleep(interval);
         }
     }

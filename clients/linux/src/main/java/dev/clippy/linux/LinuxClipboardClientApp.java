@@ -125,6 +125,10 @@ public final class LinuxClipboardClientApp {
     }
 
     private void pollAndSendIfChanged() {
+        if (pendingOfflinePayload != null && !appendPendingOffline()) {
+            return;
+        }
+
         String content;
         try {
             content = clipboardReader.readText();
@@ -132,15 +136,6 @@ public final class LinuxClipboardClientApp {
         } catch (Exception exception) {
             logReadFailure(exception.getMessage());
             return;
-        }
-
-        if (pendingOfflinePayload != null) {
-            if (!appendPendingOffline()) {
-                return;
-            }
-            if (Objects.equals(content, lastSentContent)) {
-                return;
-            }
         }
 
         if (content == null || content.isEmpty() || Objects.equals(content, lastSentContent)) {

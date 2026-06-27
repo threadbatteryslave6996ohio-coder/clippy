@@ -112,6 +112,47 @@ class LinuxClipboardClientAppTest {
     }
 
     @Test
+    void flushesPendingOfflinePayloadWhenClipboardReadFails() throws Exception {
+        Path socket = tempDir.resolve("locker.sock");
+        OfflineFileLockerService service = new OfflineFileLockerService(socket);
+        Thread serviceThread = Thread.ofPlatform().start(() -> {
+            try {
+                service.run();
+            } catch (java.nio.channels.AsynchronousCloseException ignored) {
+            } catch (Exception exception) {
+                throw new RuntimeException(exception);
+            }
+        });
+
+        try {
+            waitForSocket(socket);
+            LinuxClipboardClientApp app = newApp(
+                    newClipboardReaderThrows(new java.io.IOException("clipboard helper failed")),
+                    URI.create("http://localhost:8080/clipboard"),
+                    new ClientAuthSession(null, "client-a", null, "token"),
+                    new OfflineFileLockerClient(socket)
+            );
+            Object pendingPayload = newPayload("client-a", "pending text", Instant.parse("2026-06-27T12:00:00Z"));
+            setField(app, "pendingOfflinePayload", pendingPayload);
+
+            invokePoll(app);
+
+            assertEquals("pending text", getField(app, "lastSentContent"));
+            assertFalse(hasPendingOfflinePayload(app));
+            assertEquals("""
+                    [
+                      {"clientId":"client-a","content":"pending text","timestamp":"2026-06-27T12:00:00Z"}
+                    ]
+                    """,
+                    new OfflineFileLockerClient(socket).read(Path.of("clippy-offline-clipboard.json")));
+        } finally {
+            Files.deleteIfExists(Path.of("clippy-offline-clipboard.json"));
+            service.close();
+            serviceThread.join(TimeUnit.SECONDS.toMillis(5));
+        }
+    }
+
+    @Test
     void sendsPayloadTimestampInHttpRequestBody() throws Exception {
         CountDownLatch requestSeen = new CountDownLatch(1);
         AtomicReference<String> requestBody = new AtomicReference<>();
@@ -203,6 +244,20 @@ class LinuxClipboardClientAppTest {
                     case "name" -> "test";
                     case "isAvailable" -> true;
                     case "readText" -> content;
+                    default -> throw new UnsupportedOperationException(method.getName());
+                }
+        );
+    }
+
+    private static Object newClipboardReaderThrows(Exception exception) throws Exception {
+        Class<?> clipboardReaderClass = Class.forName("dev.clippy.linux.LinuxClipboardClientApp$ClipboardReader");
+        return Proxy.newProxyInstance(
+                LinuxClipboardClientAppTest.class.getClassLoader(),
+                new Class<?>[]{clipboardReaderClass},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "name" -> "test";
+                    case "isAvailable" -> true;
+                    case "readText" -> throw exception;
                     default -> throw new UnsupportedOperationException(method.getName());
                 }
         );
