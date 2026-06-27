@@ -64,14 +64,19 @@ uncoordinated direct writes while a sync is reading the file.
 
 Backend selection is automatic:
 
-- GNOME Wayland uses `wl-paste` from `wl-clipboard`.
-- X11 uses `xclip` when installed, then `xsel`.
-- Java AWT is used as a fallback when a graphical clipboard is available.
+- Java AWT is preferred because it keeps one persistent clipboard connection.
+- GNOME Wayland falls back to `wl-paste` from `wl-clipboard`.
+- X11 falls back to `xclip` when installed, then `xsel`.
+
+The command backends run a short-lived helper on each poll. They are fallbacks
+because that process churn can produce transient application entries on some
+desktops. Clippy also removes desktop startup and activation metadata from
+those helpers.
 
 Override automatic selection with `CLIPBOARD_BACKEND`:
 
 ```bash
-export CLIPBOARD_BACKEND=wl-paste
+export CLIPBOARD_BACKEND=awt
 ```
 
 Supported values are `wl-paste`, `wayland`, `xclip`, `xsel`, `awt`, and `java`.

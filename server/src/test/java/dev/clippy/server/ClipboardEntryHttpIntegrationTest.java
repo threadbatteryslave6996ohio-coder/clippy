@@ -94,6 +94,32 @@ class ClipboardEntryHttpIntegrationTest {
     }
 
     @Test
+    void doesNotPersistConsecutiveDuplicateContentForSameClient() throws Exception {
+        String first = """
+                {
+                  "clientId": "android-pixel-8",
+                  "content": "clipboard text",
+                  "timestamp": "2026-06-23T12:00:00Z"
+                }
+                """;
+        String duplicate = """
+                {
+                  "clientId": "android-pixel-8",
+                  "content": "clipboard text",
+                  "timestamp": "2026-06-23T12:01:00Z"
+                }
+                """;
+
+        HttpResponse<String> firstResponse = post("/clipboard", first, "valid-token");
+        HttpResponse<String> duplicateResponse = post("/clipboard", duplicate, "valid-token");
+
+        assertThat(firstResponse.statusCode()).isEqualTo(201);
+        assertThat(duplicateResponse.statusCode()).isEqualTo(201);
+        assertThat(duplicateResponse.body()).isEqualTo(firstResponse.body());
+        assertThat(repository.findAll()).hasSize(1);
+    }
+
+    @Test
     void returnsAuthenticatedClientEntriesWithinInclusiveTimeframe() throws Exception {
         repository.save(new ClipboardEntry("android-pixel-8", "before", Instant.parse("2026-06-23T11:59:59Z")));
         repository.save(new ClipboardEntry("android-pixel-8", "from", Instant.parse("2026-06-23T12:00:00Z")));

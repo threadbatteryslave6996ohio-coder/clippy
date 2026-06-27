@@ -30,13 +30,18 @@ public class ClipboardEntryController {
 
     @PostMapping("/clipboard")
     @ResponseStatus(HttpStatus.CREATED)
-    public ClipboardEntryResponse create(
+    public synchronized ClipboardEntryResponse create(
             @Valid @RequestBody ClipboardEntryRequest request,
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization
     ) {
         String token = bearerToken(authorization);
         if (!authTokenVerifier.isTokenValidForClient(request.clientId(), token)) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid client token.");
+        }
+
+        ClipboardEntry latest = repository.findFirstByClientIdOrderByIdDesc(request.clientId()).orElse(null);
+        if (latest != null && latest.getContent().equals(request.content())) {
+            return new ClipboardEntryResponse(latest.getId(), latest.getClientId(), latest.getTimestamp());
         }
 
         Instant timestamp = request.timestamp() == null ? Instant.now() : request.timestamp();

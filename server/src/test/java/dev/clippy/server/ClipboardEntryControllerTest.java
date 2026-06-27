@@ -11,6 +11,7 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -79,6 +80,58 @@ class ClipboardEntryControllerTest {
     }
 
     @Test
+    void doesNotSaveWhenLatestEntryForClientHasSameContent() {
+        ClipboardEntry latest = new ClipboardEntry(
+                "android-pixel-8",
+                "clipboard text",
+                Instant.parse("2026-06-23T12:00:00Z")
+        );
+        setId(latest, 41L);
+        AtomicInteger saves = new AtomicInteger();
+        ClipboardEntryRepository repository = clipboardEntryRepository(List.of(latest), saves);
+        AuthTokenVerifier authTokenVerifier = (clientId, token) -> "android-pixel-8".equals(clientId)
+                && "valid-token".equals(token);
+
+        ClipboardEntryResponse response = new ClipboardEntryController(repository, authTokenVerifier).create(
+                new ClipboardEntryRequest(
+                        "android-pixel-8",
+                        "clipboard text",
+                        Instant.parse("2026-06-23T12:01:00Z")
+                ),
+                "Bearer valid-token"
+        );
+
+        assertThat(response.id()).isEqualTo(41L);
+        assertThat(response.timestamp()).isEqualTo(Instant.parse("2026-06-23T12:00:00Z"));
+        assertThat(saves).hasValue(0);
+    }
+
+    @Test
+    void savesWhenLatestEntryForClientHasDifferentContent() {
+        ClipboardEntry latest = new ClipboardEntry(
+                "android-pixel-8",
+                "old text",
+                Instant.parse("2026-06-23T12:00:00Z")
+        );
+        AtomicInteger saves = new AtomicInteger();
+        ClipboardEntryRepository repository = clipboardEntryRepository(List.of(latest), saves);
+        AuthTokenVerifier authTokenVerifier = (clientId, token) -> "android-pixel-8".equals(clientId)
+                && "valid-token".equals(token);
+
+        ClipboardEntryResponse response = new ClipboardEntryController(repository, authTokenVerifier).create(
+                new ClipboardEntryRequest(
+                        "android-pixel-8",
+                        "new text",
+                        Instant.parse("2026-06-23T12:01:00Z")
+                ),
+                "Bearer valid-token"
+        );
+
+        assertThat(response.id()).isEqualTo(42L);
+        assertThat(saves).hasValue(1);
+    }
+
+    @Test
     void returnsClipboardEntriesWithinAuthenticatedClientTimeframe() {
         Instant from = Instant.parse("2026-06-23T12:00:00Z");
         Instant to = Instant.parse("2026-06-23T13:00:00Z");
@@ -103,7 +156,14 @@ class ClipboardEntryControllerTest {
     }
 
     private static ClipboardEntryRepository clipboardEntryRepository(List<ClipboardEntry> entries) {
-        InvocationHandler handler = (proxy, method, args) -> handleRepositoryCall(method, args, entries);
+        return clipboardEntryRepository(entries, new AtomicInteger());
+    }
+
+    private static ClipboardEntryRepository clipboardEntryRepository(
+            List<ClipboardEntry> entries,
+            AtomicInteger saves
+    ) {
+        InvocationHandler handler = (proxy, method, args) -> handleRepositoryCall(method, args, entries, saves);
         return (ClipboardEntryRepository) Proxy.newProxyInstance(
                 ClipboardEntryRepository.class.getClassLoader(),
                 new Class<?>[]{ClipboardEntryRepository.class},
@@ -111,16 +171,23 @@ class ClipboardEntryControllerTest {
         );
     }
 
-    private static Object handleRepositoryCall(Method method, Object[] args, List<ClipboardEntry> entries) {
+    private static Object handleRepositoryCall(
+            Method method,
+            Object[] args,
+            List<ClipboardEntry> entries,
+            AtomicInteger saves
+    ) {
         if ("save".equals(method.getName()) && args != null && args.length == 1 && args[0] instanceof ClipboardEntry entry) {
-            try {
-                java.lang.reflect.Field idField = ClipboardEntry.class.getDeclaredField("id");
-                idField.setAccessible(true);
-                idField.set(entry, 42L);
-                return entry;
-            } catch (ReflectiveOperationException exception) {
-                throw new IllegalStateException(exception);
-            }
+            saves.incrementAndGet();
+            setId(entry, 42L);
+            return entry;
+        }
+
+        if ("findFirstByClientIdOrderByIdDesc".equals(method.getName())) {
+            String clientId = (String) args[0];
+            return entries.stream()
+                    .filter(entry -> entry.getClientId().equals(clientId))
+                    .reduce((first, second) -> second);
         }
 
         if ("findByClientIdAndTimestampBetweenOrderByTimestampAscIdAsc".equals(method.getName())) {
@@ -128,5 +195,15 @@ class ClipboardEntryControllerTest {
         }
 
         throw new UnsupportedOperationException("Unexpected repository call: " + method.getName());
+    }
+
+    private static void setId(ClipboardEntry entry, long id) {
+        try {
+            java.lang.reflect.Field idField = ClipboardEntry.class.getDeclaredField("id");
+            idField.setAccessible(true);
+            idField.set(entry, id);
+        } catch (ReflectiveOperationException exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 }

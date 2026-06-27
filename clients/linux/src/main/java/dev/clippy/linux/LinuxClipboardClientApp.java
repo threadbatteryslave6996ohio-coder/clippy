@@ -25,6 +25,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -36,6 +37,13 @@ import java.util.concurrent.TimeUnit;
 public final class LinuxClipboardClientApp {
     private static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(2);
     private static final Path OFFLINE_LOG_PATH = Path.of("clippy-offline-clipboard.json");
+    private static final List<String> DESKTOP_LAUNCH_ENVIRONMENT = List.of(
+            "DESKTOP_STARTUP_ID",
+            "XDG_ACTIVATION_TOKEN",
+            "GIO_LAUNCHED_DESKTOP_FILE",
+            "GIO_LAUNCHED_DESKTOP_FILE_PID",
+            "BAMF_DESKTOP_FILE_HINT"
+    );
 
     private final ClipboardReader clipboardReader;
     private final HttpClient httpClient;
@@ -286,6 +294,9 @@ public final class LinuxClipboardClientApp {
         boolean wayland = envPresent("WAYLAND_DISPLAY");
         boolean x11 = envPresent("DISPLAY");
 
+        // AWT keeps one clipboard connection open. Prefer it over command
+        // backends, which must create a process for every poll.
+        candidates.add(new AwtClipboardReader());
         if (wayland && executableExists("wl-paste")) {
             candidates.add(new CommandClipboardReader("wl-paste", List.of("wl-paste", "--no-newline", "--type", "text/plain")));
         }
@@ -295,7 +306,6 @@ public final class LinuxClipboardClientApp {
         if (x11 && executableExists("xsel")) {
             candidates.add(new CommandClipboardReader("xsel", List.of("xsel", "--clipboard", "--output")));
         }
-        candidates.add(new AwtClipboardReader());
 
         return candidates.stream()
                 .filter(ClipboardReader::isAvailable)
@@ -320,6 +330,10 @@ public final class LinuxClipboardClientApp {
             }
         }
         return false;
+    }
+
+    static void stripDesktopLaunchEnvironment(Map<String, String> environment) {
+        DESKTOP_LAUNCH_ENVIRONMENT.forEach(environment::remove);
     }
 
     private static URI clipboardEndpoint(String remoteUrl) {
@@ -439,9 +453,12 @@ public final class LinuxClipboardClientApp {
 
         @Override
         public String readText() throws IOException, InterruptedException {
-            Process process = new ProcessBuilder(command)
-                    .redirectErrorStream(true)
-                    .start();
+            ProcessBuilder processBuilder = new ProcessBuilder(command)
+                    .redirectErrorStream(true);
+            // Poll helpers are not desktop applications and must not inherit the
+            // launch identity of the terminal or IDE that started Clippy.
+            stripDesktopLaunchEnvironment(processBuilder.environment());
+            Process process = processBuilder.start();
             CompletableFuture<byte[]> output = CompletableFuture.supplyAsync(() -> {
                 try {
                     return readAll(process.getInputStream());
