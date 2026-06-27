@@ -11,6 +11,7 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -70,6 +71,66 @@ class OfflineClipboardSyncAppTest {
         } finally {
             server.stop(0);
         }
+    }
+
+    @Test
+    void waitsThirtyMinutesThenSyncsNewFileEntries() throws Exception {
+        List<String> requests = new ArrayList<>();
+        List<Duration> sleepDurations = new ArrayList<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/clipboard", exchange -> handleClipboard(exchange, requests));
+        server.start();
+
+        try {
+            URI endpoint = URI.create("http://localhost:" + server.getAddress().getPort() + "/clipboard");
+            ClientAuthSession auth = new ClientAuthSession(null, "client-a", null, "token-a");
+            OfflineClipboardSyncApp app = new OfflineClipboardSyncApp(endpoint, "client-a", auth);
+            List<OfflineClipboardSyncApp.ClipboardRecord> changedRecords = List.of(
+                    new OfflineClipboardSyncApp.ClipboardRecord(
+                            "client-a", "send me", Instant.parse("2026-06-23T13:00:00Z"))
+            );
+            app.monitor(() -> changedRecords, List.of(), OfflineClipboardSyncApp.DEFAULT_SYNC_INTERVAL, duration -> {
+                sleepDurations.add(duration);
+                if (sleepDurations.size() == 2) {
+                    throw new InterruptedException("stop test loop");
+                }
+            });
+        } catch (InterruptedException expected) {
+            assertEquals("stop test loop", expected.getMessage());
+        } finally {
+            server.stop(0);
+        }
+
+        assertEquals(List.of(Duration.ofMinutes(30), Duration.ofMinutes(30)), sleepDurations);
+        assertEquals(2, requests.size());
+        assertTrue(requests.getFirst().startsWith("GET "));
+        assertTrue(requests.get(1).contains("\"content\":\"send me\""));
+    }
+
+    @Test
+    void retriesInitialReadFailureInsteadOfExiting() throws Exception {
+        List<Duration> sleepDurations = new ArrayList<>();
+        List<OfflineClipboardSyncApp.ClipboardRecord> expectedRecords = List.of(
+                new OfflineClipboardSyncApp.ClipboardRecord(
+                        "client-a", "available later", Instant.parse("2026-06-23T14:00:00Z"))
+        );
+        int[] attempts = {0};
+
+        List<OfflineClipboardSyncApp.ClipboardRecord> records = OfflineClipboardSyncApp.awaitInitialRecords(
+                () -> {
+                    if (attempts[0]++ == 0) {
+                        throw new IOException("file does not exist yet");
+                    }
+                    return expectedRecords;
+                },
+                false,
+                OfflineClipboardSyncApp.DEFAULT_SYNC_INTERVAL,
+                sleepDurations::add
+        );
+
+        assertEquals(expectedRecords, records);
+        assertEquals(2, attempts[0]);
+        assertEquals(List.of(Duration.ofMinutes(30)), sleepDurations);
     }
 
     private static void handleClipboard(HttpExchange exchange, List<String> requests) throws IOException {

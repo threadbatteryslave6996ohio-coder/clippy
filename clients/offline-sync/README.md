@@ -1,7 +1,8 @@
 # Offline Clipboard Sync Client
 
-This one-shot Java client synchronizes clipboard records from the Linux client's
-`clippy-offline-clipboard.json` file to the Clippy server.
+This long-running Java client monitors clipboard records from the Linux client's
+`clippy-offline-clipboard.json` file and synchronizes changes to the Clippy
+server. It checks immediately at startup and then every 30 minutes.
 
 It queries the server for the file's inclusive timestamp range, compares records
 by `clientId`, `content`, and `timestamp`, and posts only records that are not
@@ -18,7 +19,9 @@ CLIENT_SECRET=change-me-please
 ```
 
 `CLIENT_TOKEN` can be used instead of `CLIENT_SECRET`. If `CLIENT_ID` is omitted,
-the sync client uses the single client id found in the file.
+the sync client uses the single client id found in the file. If the file is
+missing, unreadable, or empty at startup, it waits and retries every 30 minutes;
+an empty file must receive an entry before the client id can be derived.
 
 Run it from the repository root:
 
@@ -41,4 +44,6 @@ first argument when needed:
 
 The sync client obtains the JSON snapshot through the same Unix-domain socket
 used for Linux-client appends. It never reads the file directly, so an append
-cannot overlap a snapshot read.
+cannot overlap a snapshot read. It only contacts the server when the parsed
+clipboard records change. Failed reads and sync attempts are retried on the next
+30-minute check.

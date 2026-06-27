@@ -25,6 +25,7 @@ import java.util.Set;
 
 public final class OfflineClipboardSyncApp {
     private static final Path DEFAULT_OFFLINE_LOG = Path.of("clippy-offline-clipboard.json");
+    static final Duration DEFAULT_SYNC_INTERVAL = Duration.ofMinutes(30);
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final HttpClient httpClient;
@@ -47,13 +48,12 @@ public final class OfflineClipboardSyncApp {
                 : OfflineFileLockerClient.DEFAULT_SOCKET_PATH;
         OfflineFileLockerClient fileLocker = new OfflineFileLockerClient(fileLockerSocket);
         fileLocker.ping();
-        List<ClipboardRecord> records = readClipboardRecords(offlineLog, fileLocker);
-        if (records.isEmpty()) {
-            System.out.printf("No offline clipboard entries to sync in %s.%n", offlineLog.toAbsolutePath());
-            return;
-        }
+        RecordSource recordSource = () -> readClipboardRecords(offlineLog, fileLocker);
+        boolean clientIdConfigured = env.has(ClientEnvs.CLIENT_ID);
+        List<ClipboardRecord> records = awaitInitialRecords(
+                recordSource, !clientIdConfigured, DEFAULT_SYNC_INTERVAL, Thread::sleep);
 
-        String configuredClientId = env.has(ClientEnvs.CLIENT_ID)
+        String configuredClientId = clientIdConfigured
                 ? env.get(ClientEnvs.CLIENT_ID)
                 : singleClientId(records);
         ensureRecordsBelongToClient(records, configuredClientId);
@@ -71,9 +71,63 @@ public final class OfflineClipboardSyncApp {
                 configuredClientId,
                 authSession
         );
-        SyncResult result = app.sync(records);
-        System.out.printf("Offline clipboard sync complete. clientId=%s checked=%d alreadyPresent=%d sent=%d%n",
-                configuredClientId, records.size(), result.alreadyPresent(), result.sent());
+        System.out.printf("Monitoring %s for offline clipboard changes every %d minutes.%n",
+                offlineLog.toAbsolutePath(), DEFAULT_SYNC_INTERVAL.toMinutes());
+        app.monitor(recordSource, records, DEFAULT_SYNC_INTERVAL, Thread::sleep);
+    }
+
+    static List<ClipboardRecord> awaitInitialRecords(RecordSource recordSource, boolean requireRecords,
+                                                       Duration interval, Sleeper sleeper)
+            throws InterruptedException {
+        while (true) {
+            try {
+                List<ClipboardRecord> records = List.copyOf(recordSource.read());
+                if (!requireRecords || !records.isEmpty()) {
+                    return records;
+                }
+                System.out.printf("Offline clipboard file is empty; waiting %d minutes to derive CLIENT_ID.%n",
+                        interval.toMinutes());
+            } catch (IOException | RuntimeException exception) {
+                System.err.printf("Could not read initial offline clipboard file; will retry in %d minutes: %s%n",
+                        interval.toMinutes(), exception.getMessage());
+            }
+            sleeper.sleep(interval);
+        }
+    }
+
+    void monitor(RecordSource recordSource, List<ClipboardRecord> initialRecords,
+                 Duration interval, Sleeper sleeper) throws InterruptedException {
+        if (interval.isZero() || interval.isNegative()) {
+            throw new IllegalArgumentException("Sync interval must be positive.");
+        }
+
+        List<ClipboardRecord> records = List.copyOf(initialRecords);
+        List<ClipboardRecord> lastSyncedRecords = null;
+        while (true) {
+            if (!records.equals(lastSyncedRecords)) {
+                try {
+                    if (records.isEmpty()) {
+                        System.out.println("No offline clipboard entries to sync. Waiting for changes.");
+                    } else {
+                        SyncResult result = sync(records);
+                        System.out.printf("Offline clipboard sync complete. clientId=%s checked=%d alreadyPresent=%d sent=%d%n",
+                                clientId, records.size(), result.alreadyPresent(), result.sent());
+                    }
+                    lastSyncedRecords = records;
+                } catch (IOException | RuntimeException exception) {
+                    System.err.printf("Offline clipboard sync failed; will retry in %d minutes: %s%n",
+                            interval.toMinutes(), exception.getMessage());
+                }
+            }
+
+            sleeper.sleep(interval);
+            try {
+                records = List.copyOf(recordSource.read());
+            } catch (IOException | RuntimeException exception) {
+                System.err.printf("Could not read offline clipboard file; will retry in %d minutes: %s%n",
+                        interval.toMinutes(), exception.getMessage());
+            }
+        }
     }
 
     SyncResult sync(List<ClipboardRecord> records) throws IOException, InterruptedException {
@@ -240,6 +294,16 @@ public final class OfflineClipboardSyncApp {
     }
 
     record SyncResult(int alreadyPresent, int sent) {
+    }
+
+    @FunctionalInterface
+    interface RecordSource {
+        List<ClipboardRecord> read() throws IOException;
+    }
+
+    @FunctionalInterface
+    interface Sleeper {
+        void sleep(Duration duration) throws InterruptedException;
     }
 
     private record RecordKey(String clientId, String content, Instant timestamp) {
