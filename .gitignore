@@ -11,6 +11,7 @@ terraform.tfvars
 .terraform/
 *.backup
 
+*.lst
 # Maven
 target/
 *.class
