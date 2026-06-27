@@ -3,6 +3,13 @@
 .env.*
 !.env.example
 !.env.*.example
+tasks
+devops/plan
+terraform.tfvars
+*.tfstate
+*.tfstate.*
+.terraform/
+*.backup
 
 # Maven
 target/
@@ -30,11 +37,16 @@ local.properties
 *~
 
 # Logs and runtime files
+logs/
+**/logs/
 *.log
 *.pid
 *.seed
 *.tmp
 *.temp
+
+# Local packages and installers
+*.deb
 
 # OS metadata
 .DS_Store

@@ -1,5 +1,7 @@
 package dev.clippy.auth.client;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -8,7 +10,10 @@ public final class ClippyAuthClient {
     private final RestClient restClient;
 
     public ClippyAuthClient(String baseUrl) {
-        this(RestClient.builder().baseUrl(baseUrl).build());
+        this(RestClient.builder()
+                .baseUrl(baseUrl)
+                .messageConverters(converters -> converters.add(new MappingJackson2HttpMessageConverter(new ObjectMapper())))
+                .build());
     }
 
     public ClippyAuthClient(RestClient restClient) {

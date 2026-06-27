@@ -1,9 +1,0 @@
-tasks 
-
-# Env
-## ensure all clients are using the env module
-
-ensure the env module is validating the envs 
-
-# authentication 
-## ensure all clients have proper authentication and on the server 

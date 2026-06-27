@@ -6,7 +6,7 @@ The client is an explicit foreground process. It reads the local system text cli
 
 ## Requirements
 
-- JDK 17+
+- JDK 25+
 - Maven 3.9+
 - A running Clippy auth server and app server
 
@@ -18,17 +18,7 @@ Start the auth database on port `5433` and the app database on port `5432` using
 
 Run the client from a logged-in graphical session so Java can access the system clipboard:
 
-```bash
-export REMOTE_SERVER_URL=http://localhost:8080
-export AUTH_SERVER_URL=http://localhost:8081
-export CLIENT_ID=my-mac
-export CLIENT_SECRET=change-me-please
-export CLIPBOARD_POLL_INTERVAL_MS=1000
-mvn -pl clients/mac package
-java -jar clients/mac/target/clippy-client-0.1.0-SNAPSHOT.jar
-```
-
-The client also reads configuration from `.env` in the repository root:
+Create or update `.env` in the repository root:
 
 ```dotenv
 REMOTE_SERVER_URL=http://localhost:8080
@@ -36,6 +26,13 @@ AUTH_SERVER_URL=http://localhost:8081
 CLIENT_ID=my-mac
 CLIENT_SECRET=change-me-please
 CLIPBOARD_POLL_INTERVAL_MS=1000
+```
+
+Then build and start the client:
+
+```bash
+mvn -pl clients/mac package
+java -jar clients/mac/target/clippy-client-0.1.0-SNAPSHOT.jar
 ```
 
 Shell environment variables override values from `.env` when both are set.

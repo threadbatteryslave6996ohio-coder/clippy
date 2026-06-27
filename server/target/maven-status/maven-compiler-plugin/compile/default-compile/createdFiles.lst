@@ -1,6 +1,11 @@
+dev/clippy/server/ServerEnvs.class
+dev/clippy/utils/envmanager/EnvValidationException.class
 dev/clippy/server/ClippyServerApplication.class
-dev/clippy/server/ClipboardEntryResponse.class
 dev/clippy/server/ClipboardEntry.class
+dev/clippy/server/ClipboardEntryResponse.class
+dev/clippy/utils/envmanager/EnvClassBuilder.class
+dev/clippy/utils/envmanager/Env.class
+dev/clippy/utils/envmanager/EnvFiles.class
 dev/clippy/server/ClipboardEntryController.class
 dev/clippy/server/ClipboardEntryRepository.class
 dev/clippy/server/AuthServerProperties.class
@@ -8,3 +13,6 @@ dev/clippy/server/AuthTokenVerifier.class
 dev/clippy/server/AuthServerTokenVerifier.class
 dev/clippy/server/AuthClientConfiguration.class
 dev/clippy/server/ClipboardEntryRequest.class
+dev/clippy/utils/envmanager/EnvType.class
+dev/clippy/utils/envmanager/EnvSchema.class
+dev/clippy/utils/envmanager/EnvOption.class

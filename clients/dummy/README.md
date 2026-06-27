@@ -6,7 +6,7 @@ This client does not read the system clipboard. It sends command text as the `co
 
 ## Requirements
 
-- JDK 17+
+- JDK 25+
 - Maven 3.9+
 - A running Clippy auth server and app server
 
@@ -56,10 +56,10 @@ From the repository root:
    mvn -pl clients/dummy package
    ```
 
-   If Maven is not already running on JDK 17, pin `JAVA_HOME` for the build:
+   If Maven is not already running on JDK 25, pin `JAVA_HOME` for the build:
 
    ```bash
-   JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 mvn -pl clients/dummy package
+   JAVA_HOME=/usr/lib/jvm/java-25-openjdk-arm64 mvn -pl clients/dummy package
    ```
 
 5. Send a command.

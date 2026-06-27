@@ -1,69 +1,123 @@
 package dev.clippy.auth;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.server.ResponseStatusException;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 class AuthControllerTest {
-    @TempDir
-    Path tempDir;
+    @Mock
+    private ClientIdentityRepository identities;
+
+    @Mock
+    private ClientTokenRepository tokens;
+
+    @Mock
+    private TokenGenerator tokenGenerator;
+
+    private final CredentialHasher credentialHasher = new CredentialHasher();
 
     @Test
-    void logsLoginAndTokenCheckRequests() throws IOException {
-        String originalLoggerDir = System.getProperty("custom.logger.dir");
-        System.setProperty("custom.logger.dir", tempDir.toString());
+    void createIdentityStoresAHashedSecret() {
+        when(identities.existsByClientId("client-a")).thenReturn(false);
+        when(identities.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        try {
-            ClientIdentityRepository identities = mock(ClientIdentityRepository.class);
-            ClientTokenRepository tokens = mock(ClientTokenRepository.class);
-            CredentialHasher credentialHasher = new CredentialHasher();
-            TokenGenerator tokenGenerator = mock(TokenGenerator.class);
+        AuthController controller = new AuthController(identities, tokens, credentialHasher, tokenGenerator);
+        IdentityResponse response = controller.createIdentity(new CreateIdentityRequest("client-a", "super-secret"));
 
-            ClientIdentity identity = new ClientIdentity(
-                    "dummy",
-                    credentialHasher.hashSecret("change-me-please"),
-                    Instant.parse("2026-06-25T12:00:00Z")
-            );
+        ArgumentCaptor<ClientIdentity> identityCaptor = ArgumentCaptor.forClass(ClientIdentity.class);
+        org.mockito.Mockito.verify(identities).save(identityCaptor.capture());
 
-            when(identities.findByClientId("dummy")).thenReturn(Optional.of(identity));
-            when(tokenGenerator.newToken()).thenReturn("generated-token");
-            when(tokens.save(any(ClientToken.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        assertEquals("client-a", response.clientId());
+        assertEquals(identityCaptor.getValue().getCreatedAt(), response.createdAt());
+        assertTrue(credentialHasher.matches("super-secret", identityCaptor.getValue().getSecretHash()));
+    }
 
-            AuthController controller = new AuthController(identities, tokens, credentialHasher, tokenGenerator);
+    @Test
+    void createIdentityRejectsDuplicates() {
+        when(identities.existsByClientId("client-a")).thenReturn(true);
 
-            LoginResponse loginResponse = controller.login(new LoginRequest("dummy", "change-me-please"));
-            assertEquals("dummy", loginResponse.clientId());
-            assertEquals("generated-token", loginResponse.token());
+        AuthController controller = new AuthController(identities, tokens, credentialHasher, tokenGenerator);
 
-            String tokenHash = credentialHasher.hashToken("generated-token");
-            when(tokens.findByTokenHash(tokenHash)).thenReturn(Optional.of(new ClientToken(identity, tokenHash, Instant.parse("2026-06-25T12:01:00Z"))));
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> controller.createIdentity(new CreateIdentityRequest("client-a", "super-secret")));
 
-            CheckTokenResponse checkTokenResponse = controller.checkToken(new CheckTokenRequest("dummy", "generated-token"));
-            assertTrue(checkTokenResponse.valid());
-            assertEquals("dummy", checkTokenResponse.clientId());
+        assertEquals(409, exception.getStatusCode().value());
+    }
 
-            String content = Files.readString(tempDir.resolve("auth-server.txt"));
-            assertTrue(content.contains("Login request received for clientId=dummy"));
-            assertTrue(content.contains("Issued login token for clientId=dummy"));
-            assertTrue(content.contains("Token check request received for clientId=dummy"));
-            assertTrue(content.contains("Token check completed for clientId=dummy, valid=true"));
-        } finally {
-            if (originalLoggerDir == null) {
-                System.clearProperty("custom.logger.dir");
-            } else {
-                System.setProperty("custom.logger.dir", originalLoggerDir);
-            }
-        }
+    @Test
+    void loginIssuesAndPersistsTokenForMatchingCredentials() {
+        String secretHash = credentialHasher.hashSecret("super-secret");
+        ClientIdentity identity = new ClientIdentity("client-a", secretHash, Instant.parse("2026-06-26T00:00:00Z"));
+        when(identities.findByClientId("client-a")).thenReturn(Optional.of(identity));
+        when(tokenGenerator.newToken()).thenReturn("issued-token");
+        when(tokens.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AuthController controller = new AuthController(identities, tokens, credentialHasher, tokenGenerator);
+        LoginResponse response = controller.login(new LoginRequest("client-a", "super-secret"));
+
+        ArgumentCaptor<ClientToken> tokenCaptor = ArgumentCaptor.forClass(ClientToken.class);
+        org.mockito.Mockito.verify(tokens).save(tokenCaptor.capture());
+
+        assertEquals(new LoginResponse("client-a", "issued-token"), response);
+        assertEquals(credentialHasher.hashToken("issued-token"), tokenCaptor.getValue().getTokenHash());
+        assertEquals(identity, tokenCaptor.getValue().getIdentity());
+    }
+
+    @Test
+    void loginRejectsInvalidCredentials() {
+        ClientIdentity identity = new ClientIdentity("client-a", credentialHasher.hashSecret("super-secret"), Instant.now());
+        when(identities.findByClientId("client-a")).thenReturn(Optional.of(identity));
+
+        AuthController controller = new AuthController(identities, tokens, credentialHasher, tokenGenerator);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> controller.login(new LoginRequest("client-a", "wrong-secret")));
+
+        assertEquals(401, exception.getStatusCode().value());
+    }
+
+    @Test
+    void checkTokenReturnsTrueOnlyForMatchingActiveIdentity() {
+        ClientIdentity identity = new ClientIdentity("client-a", credentialHasher.hashSecret("super-secret"), Instant.now());
+        String token = "issued-token";
+        String tokenHash = credentialHasher.hashToken(token);
+        when(tokens.findByTokenHash(anyString())).thenReturn(Optional.of(new ClientToken(identity, tokenHash, Instant.now())));
+
+        AuthController controller = new AuthController(identities, tokens, credentialHasher, tokenGenerator);
+
+        CheckTokenResponse response = controller.checkToken(new CheckTokenRequest("client-a", token));
+
+        assertTrue(response.valid());
+        assertEquals("client-a", response.clientId());
+    }
+
+    @Test
+    void checkTokenReturnsFalseForMismatchedClientId() {
+        ClientIdentity identity = new ClientIdentity("client-a", credentialHasher.hashSecret("super-secret"), Instant.now());
+        String token = "issued-token";
+        String tokenHash = credentialHasher.hashToken(token);
+        when(tokens.findByTokenHash(anyString())).thenReturn(Optional.of(new ClientToken(identity, tokenHash, Instant.now())));
+
+        AuthController controller = new AuthController(identities, tokens, credentialHasher, tokenGenerator);
+
+        CheckTokenResponse response = controller.checkToken(new CheckTokenRequest("client-b", token));
+
+        assertFalse(response.valid());
+        assertEquals("client-b", response.clientId());
     }
 }

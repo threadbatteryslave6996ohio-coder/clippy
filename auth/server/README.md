@@ -14,7 +14,7 @@ The clipboard app server does not store client secrets or token records. It rece
 
 ## Requirements
 
-- JDK 17+ with `javac` available on `PATH`
+- JDK 25+ with `javac` available on `PATH`
 - Maven 3.9+
 - Docker and Docker Compose for local PostgreSQL
 
