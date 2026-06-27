@@ -53,7 +53,7 @@ mvn -pl server -am package
 java -jar server/target/clippy-server-0.1.0-SNAPSHOT.jar
 ```
 
-The auth server listens on `http://localhost:8081` and the app server listens on `http://localhost:8080` by default. Both servers load the repository root `.env` through the shared env manager, then overlay real process environment variables.
+The auth server listens on `http://localhost:8081` and the app server listens on `http://localhost:8080` by default. Both servers read their settings from the repository root `.env` through the shared env manager.
 
 The auth server uses `AUTH_DATASOURCE_*` values and the app server uses `SPRING_DATASOURCE_*` values. Set those to your Azure PostgreSQL connection details in `.env` or in the shell before running Maven. Use separate database names if you want isolation between auth and clipboard data.
 
@@ -67,7 +67,7 @@ SPRING_DATASOURCE_PASSWORD=clippy
 CLIPPY_AUTH_BASE_URL=http://localhost:8081
 ```
 
-Override `SERVER_PORT`, `AUTH_SERVER_PORT`, `CLIPPY_AUTH_BASE_URL`, or the datasource environment variables if you need different local settings.
+Override `SERVER_PORT`, `AUTH_SERVER_PORT`, `CLIPPY_AUTH_BASE_URL`, or the datasource values in `.env` if you need different local settings.
 
 Create a client identity and login before running a client:
 
@@ -186,20 +186,6 @@ http://10.0.2.2:8080
 ```
 
 See [clients/android/README.md](clients/android/README.md) for Android behavior, build, and local-server notes.
-
-## Run Envoy
-
-Start the local Envoy proxy for external services:
-
-```bash
-cd ~/Desktop/clippy
-./scripts/start-envoy.sh
-```
-
-It listens on `http://localhost:10080` and routes:
-
-- `http://localhost:10080/clipy` to `http://localhost:8080`
-- `http://localhost:10080/auth` to `http://localhost:8081`
 
 ## API
 

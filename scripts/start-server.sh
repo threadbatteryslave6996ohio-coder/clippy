@@ -8,5 +8,12 @@ mkdir -p "$ROOT_DIR/logs"
 mkdir -p "$MAVEN_REPO_LOCAL"
 cd "$ROOT_DIR"
 
+if [ -f "$ROOT_DIR/.env" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ROOT_DIR/.env"
+  set +a
+fi
+
 MAVEN_OPTS="${MAVEN_OPTS:-}" mvn -q -Dmaven.repo.local="$MAVEN_REPO_LOCAL" -pl server -am -Dmaven.test.skip=true package "$@"
 exec java -jar server/target/clippy-server-0.1.0-SNAPSHOT.jar

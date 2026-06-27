@@ -12,11 +12,19 @@ import java.nio.file.Path;
 public class ClippyAuthServerApplication {
     public static void main(String[] args) throws IOException {
         Env env = AuthServerEnvs.load();
+        applySpringSystemProperties(env);
         configureCustomLoggerDirectory(env);
         logLocalDatabaseIfApplicable(env);
         SpringApplication application = new SpringApplication(ClippyAuthServerApplication.class);
-        application.setDefaultProperties(AuthServerEnvs.springDefaults(env));
         application.run(args);
+    }
+
+    private static void applySpringSystemProperties(Env env) {
+        System.setProperty("server.port", env.get(AuthServerEnvs.AUTH_SERVER_PORT));
+        System.setProperty("spring.datasource.url", env.get(AuthServerEnvs.AUTH_DATASOURCE_URL));
+        System.setProperty("spring.datasource.username", env.get(AuthServerEnvs.AUTH_DATASOURCE_USERNAME));
+        System.setProperty("spring.datasource.password", env.get(AuthServerEnvs.AUTH_DATASOURCE_PASSWORD));
+        System.setProperty("logging.file.name", env.get(AuthServerEnvs.AUTH_LOGGING_FILE_NAME));
     }
 
     private static void configureCustomLoggerDirectory(Env env) {

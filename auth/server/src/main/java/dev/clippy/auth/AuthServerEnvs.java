@@ -37,11 +37,11 @@ public final class AuthServerEnvs {
     }
 
     public static Env load() throws IOException {
-        return from(EnvFiles.load(Path.of("").toAbsolutePath()));
+        return from(EnvFiles.loadDotenvOnly(Path.of("").toAbsolutePath()));
     }
 
     static Env loadFrom(Path startDirectory) throws IOException {
-        return from(EnvFiles.load(startDirectory));
+        return from(EnvFiles.loadDotenvOnly(startDirectory));
     }
 
     public static Env from(Map<String, String> source) {

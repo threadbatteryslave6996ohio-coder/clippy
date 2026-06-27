@@ -35,7 +35,7 @@ public final class ServerEnvs {
     }
 
     public static Env load() throws IOException {
-        return from(EnvFiles.load(Path.of("").toAbsolutePath()));
+        return from(EnvFiles.loadDotenvOnly(Path.of("").toAbsolutePath()));
     }
 
     public static Env from(Map<String, String> source) {

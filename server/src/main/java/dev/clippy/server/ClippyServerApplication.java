@@ -11,10 +11,19 @@ import java.nio.file.Path;
 public class ClippyServerApplication {
     public static void main(String[] args) throws IOException {
         Env env = ServerEnvs.load();
+        applySpringSystemProperties(env);
         configureCustomLoggerDirectory(env);
         SpringApplication application = new SpringApplication(ClippyServerApplication.class);
-        application.setDefaultProperties(ServerEnvs.springDefaults(env));
         application.run(args);
+    }
+
+    private static void applySpringSystemProperties(Env env) {
+        System.setProperty("server.port", env.get(ServerEnvs.SERVER_PORT));
+        System.setProperty("spring.datasource.url", env.get(ServerEnvs.SPRING_DATASOURCE_URL));
+        System.setProperty("spring.datasource.username", env.get(ServerEnvs.SPRING_DATASOURCE_USERNAME));
+        System.setProperty("spring.datasource.password", env.get(ServerEnvs.SPRING_DATASOURCE_PASSWORD));
+        System.setProperty("clippy.auth.base-url", env.get(ServerEnvs.CLIPPY_AUTH_BASE_URL));
+        System.setProperty("logging.file.name", env.get(ServerEnvs.LOGGING_FILE_NAME));
     }
 
     private static void configureCustomLoggerDirectory(Env env) {
