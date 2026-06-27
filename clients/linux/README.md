@@ -35,6 +35,15 @@ CLIPBOARD_BACKEND=wl-paste
 
 Shell environment variables override values from `.env` when both are set.
 
+Build and start the client with the repository launcher:
+
+```bash
+./scripts/start-linux-client.sh
+```
+
+The launcher changes to the repository root before starting Java, so the client
+consistently finds the repository root `.env` file.
+
 `REMOTE_SERVER_URL` is required. It may be either the server base URL, such as `http://localhost:8080`, or the full endpoint, such as `http://localhost:8080/clipboard`.
 
 `CLIENT_ID` is optional and defaults to the machine hostname, with a random fallback if hostname lookup fails. `CLIPBOARD_POLL_INTERVAL_MS` is optional and defaults to `1000`.

@@ -123,13 +123,7 @@ Start the Clippy server first, then run the Linux client from a logged-in graphi
 
 ```bash
 cd ~/Desktop/clippy
-export REMOTE_SERVER_URL=http://localhost:8080
-export AUTH_SERVER_URL=http://localhost:8081
-export CLIENT_ID=ubuntu-gnome
-export CLIENT_SECRET=change-me-please
-export CLIPBOARD_POLL_INTERVAL_MS=1000
-mvn -pl clients/linux package
-java -jar clients/linux/target/clippy-linux-client-0.1.0-SNAPSHOT.jar
+./scripts/start-linux-client.sh
 ```
 
 `REMOTE_SERVER_URL` is required. It can be the server base URL, such as `http://localhost:8080`, or the full endpoint, such as `http://localhost:8080/clipboard`.

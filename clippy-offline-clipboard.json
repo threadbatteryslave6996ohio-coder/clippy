@@ -1,0 +1,4 @@
+[
+  {"type":"auth","clientId":"dummy-popo","authServer":"http://clippy-server:8081","operation":"refresh","status":"started","message":"startup token refresh","timestamp":"2026-06-27T13:00:57.114470068Z"},
+  {"type":"auth","clientId":"dummy-popo","authServer":"http://clippy-server:8081","operation":"refresh","status":"succeeded","message":"startup token refresh","timestamp":"2026-06-27T13:00:58.677944234Z"}
+]
