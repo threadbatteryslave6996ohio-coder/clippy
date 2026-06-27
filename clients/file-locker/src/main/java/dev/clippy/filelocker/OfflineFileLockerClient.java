@@ -30,6 +30,10 @@ public final class OfflineFileLockerClient {
         request(FileLockerProtocol.APPEND, path, jsonEntry);
     }
 
+    public boolean clearIfUnchanged(Path path, String expectedContent) throws IOException {
+        return Boolean.parseBoolean(request(FileLockerProtocol.CLEAR_IF_UNCHANGED, path, expectedContent));
+    }
+
     private String request(int operation, Path path, String content) throws IOException {
         try (SocketChannel channel = SocketChannel.open(StandardProtocolFamily.UNIX)) {
             channel.connect(address);

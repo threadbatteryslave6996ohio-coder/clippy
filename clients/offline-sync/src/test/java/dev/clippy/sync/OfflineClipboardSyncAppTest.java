@@ -77,6 +77,7 @@ class OfflineClipboardSyncAppTest {
     void waitsThirtyMinutesThenSyncsNewFileEntries() throws Exception {
         List<String> requests = new ArrayList<>();
         List<Duration> sleepDurations = new ArrayList<>();
+        List<String> clearedSnapshots = new ArrayList<>();
         HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/clipboard", exchange -> handleClipboard(exchange, requests));
         server.start();
@@ -89,7 +90,15 @@ class OfflineClipboardSyncAppTest {
                     new OfflineClipboardSyncApp.ClipboardRecord(
                             "client-a", "send me", Instant.parse("2026-06-23T13:00:00Z"))
             );
-            app.monitor(() -> changedRecords, List.of(), OfflineClipboardSyncApp.DEFAULT_SYNC_INTERVAL, duration -> {
+            OfflineClipboardSyncApp.ClipboardSnapshot changedSnapshot =
+                    new OfflineClipboardSyncApp.ClipboardSnapshot("[changed]", changedRecords);
+            app.monitor(() -> changedSnapshot,
+                    snapshot -> {
+                        clearedSnapshots.add(snapshot.content());
+                        return true;
+                    },
+                    new OfflineClipboardSyncApp.ClipboardSnapshot("[]", List.of()),
+                    OfflineClipboardSyncApp.DEFAULT_SYNC_INTERVAL, duration -> {
                 sleepDurations.add(duration);
                 if (sleepDurations.size() == 2) {
                     throw new InterruptedException("stop test loop");
@@ -102,6 +111,7 @@ class OfflineClipboardSyncAppTest {
         }
 
         assertEquals(List.of(Duration.ofMinutes(30), Duration.ofMinutes(30)), sleepDurations);
+        assertEquals(List.of("[]", "[changed]"), clearedSnapshots);
         assertEquals(2, requests.size());
         assertTrue(requests.getFirst().startsWith("GET "));
         assertTrue(requests.get(1).contains("\"content\":\"send me\""));
@@ -116,21 +126,55 @@ class OfflineClipboardSyncAppTest {
         );
         int[] attempts = {0};
 
-        List<OfflineClipboardSyncApp.ClipboardRecord> records = OfflineClipboardSyncApp.awaitInitialRecords(
+        OfflineClipboardSyncApp.ClipboardSnapshot expectedSnapshot =
+                new OfflineClipboardSyncApp.ClipboardSnapshot("[available]", expectedRecords);
+        OfflineClipboardSyncApp.ClipboardSnapshot snapshot = OfflineClipboardSyncApp.awaitInitialSnapshot(
                 () -> {
                     if (attempts[0]++ == 0) {
                         throw new IOException("file does not exist yet");
                     }
-                    return expectedRecords;
+                    return expectedSnapshot;
                 },
                 false,
                 OfflineClipboardSyncApp.DEFAULT_SYNC_INTERVAL,
                 sleepDurations::add
         );
 
-        assertEquals(expectedRecords, records);
+        assertEquals(expectedSnapshot, snapshot);
         assertEquals(2, attempts[0]);
         assertEquals(List.of(Duration.ofMinutes(30)), sleepDurations);
+    }
+
+    @Test
+    void doesNotClearSnapshotWhenSyncFails() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/clipboard", exchange -> respond(exchange, 503, "temporarily unavailable"));
+        server.start();
+        int[] clearAttempts = {0};
+
+        try {
+            URI endpoint = URI.create("http://localhost:" + server.getAddress().getPort() + "/clipboard");
+            OfflineClipboardSyncApp app = new OfflineClipboardSyncApp(
+                    endpoint, "client-a", new ClientAuthSession(null, "client-a", null, "token-a"));
+            OfflineClipboardSyncApp.ClipboardSnapshot snapshot = new OfflineClipboardSyncApp.ClipboardSnapshot(
+                    "[failed]",
+                    List.of(new OfflineClipboardSyncApp.ClipboardRecord(
+                            "client-a", "keep me", Instant.parse("2026-06-23T15:00:00Z")))
+            );
+
+            app.monitor(() -> snapshot, ignored -> {
+                clearAttempts[0]++;
+                return true;
+            }, snapshot, Duration.ofMinutes(30), ignored -> {
+                throw new InterruptedException("stop test loop");
+            });
+        } catch (InterruptedException expected) {
+            assertEquals("stop test loop", expected.getMessage());
+        } finally {
+            server.stop(0);
+        }
+
+        assertEquals(0, clearAttempts[0]);
     }
 
     private static void handleClipboard(HttpExchange exchange, List<String> requests) throws IOException {

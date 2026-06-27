@@ -132,6 +132,32 @@ class ClipboardEntryControllerTest {
     }
 
     @Test
+    void savesOlderOfflineEntryWhenLatestEntryHasSameContent() {
+        ClipboardEntry latest = new ClipboardEntry(
+                "android-pixel-8",
+                "clipboard text",
+                Instant.parse("2026-06-23T12:01:00Z")
+        );
+        setId(latest, 41L);
+        AtomicInteger saves = new AtomicInteger();
+        ClipboardEntryRepository repository = clipboardEntryRepository(List.of(latest), saves);
+
+        ClipboardEntryResponse response = new ClipboardEntryController(
+                repository, (clientId, token) -> true).create(
+                new ClipboardEntryRequest(
+                        "android-pixel-8",
+                        "clipboard text",
+                        Instant.parse("2026-06-23T12:00:00Z")
+                ),
+                "Bearer valid-token"
+        );
+
+        assertThat(response.id()).isEqualTo(42L);
+        assertThat(response.timestamp()).isEqualTo(Instant.parse("2026-06-23T12:00:00Z"));
+        assertThat(saves).hasValue(1);
+    }
+
+    @Test
     void returnsClipboardEntriesWithinAuthenticatedClientTimeframe() {
         Instant from = Instant.parse("2026-06-23T12:00:00Z");
         Instant to = Instant.parse("2026-06-23T13:00:00Z");
@@ -144,7 +170,7 @@ class ClipboardEntryControllerTest {
 
         ClipboardEntryController controller = new ClipboardEntryController(repository, authTokenVerifier);
         List<ClipboardEntryDetailsResponse> response = controller.findWithinTimeframe(
-                "client-a", from, to, "Bearer valid-token"
+                "client-a", from, to, null, null, null, "Bearer valid-token"
         );
 
         assertThat(response).extracting(ClipboardEntryDetailsResponse::content)
@@ -190,7 +216,22 @@ class ClipboardEntryControllerTest {
                     .reduce((first, second) -> second);
         }
 
+        if ("findFirstByClientIdAndTimestampAndContentOrderByIdAsc".equals(method.getName())) {
+            String clientId = (String) args[0];
+            Instant timestamp = (Instant) args[1];
+            String content = (String) args[2];
+            return entries.stream()
+                    .filter(entry -> entry.getClientId().equals(clientId))
+                    .filter(entry -> entry.getTimestamp().equals(timestamp))
+                    .filter(entry -> entry.getContent().equals(content))
+                    .findFirst();
+        }
+
         if ("findByClientIdAndTimestampBetweenOrderByTimestampAscIdAsc".equals(method.getName())) {
+            return entries;
+        }
+
+        if ("findTimeframePage".equals(method.getName())) {
             return entries;
         }
 

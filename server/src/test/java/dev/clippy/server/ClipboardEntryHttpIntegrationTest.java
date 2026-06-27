@@ -120,6 +120,27 @@ class ClipboardEntryHttpIntegrationTest {
     }
 
     @Test
+    void persistsOlderBackfillWhenLatestContentMatches() throws Exception {
+        repository.save(new ClipboardEntry(
+                "android-pixel-8", "clipboard text", Instant.parse("2026-06-23T12:01:00Z")));
+        String historical = """
+                {
+                  "clientId": "android-pixel-8",
+                  "content": "clipboard text",
+                  "timestamp": "2026-06-23T12:00:00Z"
+                }
+                """;
+
+        HttpResponse<String> firstResponse = post("/clipboard", historical, "valid-token");
+        HttpResponse<String> retryResponse = post("/clipboard", historical, "valid-token");
+
+        assertThat(firstResponse.statusCode()).isEqualTo(201);
+        assertThat(retryResponse.statusCode()).isEqualTo(201);
+        assertThat(retryResponse.body()).isEqualTo(firstResponse.body());
+        assertThat(repository.findAll()).hasSize(2);
+    }
+
+    @Test
     void returnsAuthenticatedClientEntriesWithinInclusiveTimeframe() throws Exception {
         repository.save(new ClipboardEntry("android-pixel-8", "before", Instant.parse("2026-06-23T11:59:59Z")));
         repository.save(new ClipboardEntry("android-pixel-8", "from", Instant.parse("2026-06-23T12:00:00Z")));
@@ -135,6 +156,33 @@ class ClipboardEntryHttpIntegrationTest {
         assertThat(response.body()).contains("\"content\":\"from\"");
         assertThat(response.body()).contains("\"content\":\"to\"");
         assertThat(response.body()).doesNotContain("before").doesNotContain("private");
+    }
+
+    @Test
+    void pagesTimeframeEntriesWithTimestampAndIdCursor() throws Exception {
+        Instant timestamp = Instant.parse("2026-06-23T12:00:00Z");
+        ClipboardEntry first = repository.save(new ClipboardEntry("android-pixel-8", "first", timestamp));
+        ClipboardEntry second = repository.save(new ClipboardEntry("android-pixel-8", "second", timestamp));
+        repository.save(new ClipboardEntry(
+                "android-pixel-8", "third", Instant.parse("2026-06-23T12:01:00Z")));
+
+        HttpResponse<String> firstPage = get(
+                "/clipboard?clientId=android-pixel-8&from=2026-06-23T12%3A00%3A00Z"
+                        + "&to=2026-06-23T13%3A00%3A00Z&limit=2",
+                "valid-token"
+        );
+        HttpResponse<String> secondPage = get(
+                "/clipboard?clientId=android-pixel-8&from=2026-06-23T12%3A00%3A00Z"
+                        + "&to=2026-06-23T13%3A00%3A00Z&limit=2"
+                        + "&afterTimestamp=2026-06-23T12%3A00%3A00Z&afterId=" + second.getId(),
+                "valid-token"
+        );
+
+        assertThat(firstPage.statusCode()).isEqualTo(200);
+        assertThat(firstPage.body()).contains("\"id\":" + first.getId(), "\"id\":" + second.getId())
+                .doesNotContain("third");
+        assertThat(secondPage.statusCode()).isEqualTo(200);
+        assertThat(secondPage.body()).contains("third").doesNotContain("first").doesNotContain("second");
     }
 
     private HttpResponse<String> post(String path, String json, String bearerToken) throws IOException, InterruptedException {

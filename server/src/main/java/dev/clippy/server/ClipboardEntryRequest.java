@@ -12,6 +12,7 @@ public record ClipboardEntryRequest(
         String clientId,
 
         @NotNull
+        @Size(max = 1_000_000)
         String content,
 
         Instant timestamp

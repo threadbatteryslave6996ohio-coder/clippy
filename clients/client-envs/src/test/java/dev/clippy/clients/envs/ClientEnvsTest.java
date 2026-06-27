@@ -19,7 +19,8 @@ class ClientEnvsTest {
                 "AUTH_SERVER_URL", "http://localhost:8081",
                 "CLIPBOARD_POLL_INTERVAL_MS", "250",
                 "CLIPBOARD_BACKEND", "xclip",
-                "OFFLINE_FILE_LOCKER_SOCKET", "/tmp/clippy-test.sock"
+                "OFFLINE_FILE_LOCKER_SOCKET", "/tmp/clippy-test.sock",
+                "OFFLINE_SYNC_INTERVAL_MINUTES", "15"
         ));
 
         assertEquals("http://localhost:8080", env.get(ClientEnvs.REMOTE_SERVER_URL));
@@ -30,6 +31,7 @@ class ClientEnvsTest {
         assertEquals(250L, env.get(ClientEnvs.CLIPBOARD_POLL_INTERVAL_MS));
         assertEquals("xclip", env.get(ClientEnvs.CLIPBOARD_BACKEND));
         assertEquals("/tmp/clippy-test.sock", env.get(ClientEnvs.OFFLINE_FILE_LOCKER_SOCKET));
+        assertEquals(15L, env.get(ClientEnvs.OFFLINE_SYNC_INTERVAL_MINUTES));
         assertTrue(env.has(ClientEnvs.CLIENT_ID));
     }
 }

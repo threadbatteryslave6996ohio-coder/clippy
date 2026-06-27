@@ -10,6 +10,7 @@ final class FileLockerProtocol {
     static final int PING = 0;
     static final int READ = 1;
     static final int APPEND = 2;
+    static final int CLEAR_IF_UNCHANGED = 3;
     static final int OK = 0;
     static final int ERROR = 1;
     private static final int MAX_MESSAGE_BYTES = 256 * 1024 * 1024;

@@ -4,6 +4,7 @@ import dev.clippy.utils.logger.CustomLogger;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpHeaders;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -39,12 +40,25 @@ public class ClipboardEntryController {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid client token.");
         }
 
-        ClipboardEntry latest = repository.findFirstByClientIdOrderByIdDesc(request.clientId()).orElse(null);
-        if (latest != null && latest.getContent().equals(request.content())) {
-            return new ClipboardEntryResponse(latest.getId(), latest.getClientId(), latest.getTimestamp());
+        Instant requestedTimestamp = request.timestamp();
+        if (requestedTimestamp != null) {
+            ClipboardEntry existing = repository
+                    .findFirstByClientIdAndTimestampAndContentOrderByIdAsc(
+                            request.clientId(), requestedTimestamp, request.content())
+                    .orElse(null);
+            if (existing != null) {
+                return response(existing);
+            }
         }
 
-        Instant timestamp = request.timestamp() == null ? Instant.now() : request.timestamp();
+        ClipboardEntry latest = repository.findFirstByClientIdOrderByIdDesc(request.clientId()).orElse(null);
+        if (latest != null
+                && latest.getContent().equals(request.content())
+                && (requestedTimestamp == null || !requestedTimestamp.isBefore(latest.getTimestamp()))) {
+            return response(latest);
+        }
+
+        Instant timestamp = requestedTimestamp == null ? Instant.now() : requestedTimestamp;
         ClipboardEntry saved = repository.save(new ClipboardEntry(
                 request.clientId(),
                 request.content(),
@@ -59,6 +73,9 @@ public class ClipboardEntryController {
             @RequestParam("clientId") String clientId,
             @RequestParam("from") Instant from,
             @RequestParam("to") Instant to,
+            @RequestParam(value = "limit", required = false) Integer limit,
+            @RequestParam(value = "afterTimestamp", required = false) Instant afterTimestamp,
+            @RequestParam(value = "afterId", required = false) Long afterId,
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization
     ) {
         String token = bearerToken(authorization);
@@ -69,7 +86,25 @@ public class ClipboardEntryController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "from must be before or equal to to.");
         }
 
-        return repository.findByClientIdAndTimestampBetweenOrderByTimestampAscIdAsc(clientId, from, to)
+        if ((afterTimestamp == null) != (afterId == null)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "afterTimestamp and afterId must be provided together.");
+        }
+        if (limit != null && (limit < 1 || limit > 1_000)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "limit must be between 1 and 1000.");
+        }
+
+        List<ClipboardEntry> entries;
+        if (limit == null) {
+            entries = repository.findByClientIdAndTimestampBetweenOrderByTimestampAscIdAsc(clientId, from, to);
+        } else if (afterTimestamp == null) {
+            entries = repository.findByClientIdAndTimestampBetweenOrderByTimestampAscIdAsc(
+                    clientId, from, to, PageRequest.of(0, limit));
+        } else {
+            entries = repository.findTimeframePage(
+                    clientId, from, to, afterTimestamp, afterId, PageRequest.of(0, limit));
+        }
+        return entries
                 .stream()
                 .map(ClipboardEntryDetailsResponse::from)
                 .toList();
@@ -83,6 +118,10 @@ public class ClipboardEntryController {
         } catch (RuntimeException exception) {
             // Audit logging is best-effort; a logging failure must not reject the write.
         }
+    }
+
+    private static ClipboardEntryResponse response(ClipboardEntry entry) {
+        return new ClipboardEntryResponse(entry.getId(), entry.getClientId(), entry.getTimestamp());
     }
 
     private static String bearerToken(String authorization) {

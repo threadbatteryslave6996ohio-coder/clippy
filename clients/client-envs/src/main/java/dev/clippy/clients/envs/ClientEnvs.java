@@ -18,6 +18,7 @@ public final class ClientEnvs {
     public static final EnvOption<Long> CLIPBOARD_POLL_INTERVAL_MS;
     public static final EnvOption<String> CLIPBOARD_BACKEND;
     public static final EnvOption<String> OFFLINE_FILE_LOCKER_SOCKET;
+    public static final EnvOption<Long> OFFLINE_SYNC_INTERVAL_MINUTES;
     public static final EnvSchema ENV;
 
     static {
@@ -30,6 +31,7 @@ public final class ClientEnvs {
         CLIPBOARD_POLL_INTERVAL_MS = builder.optional("CLIPBOARD_POLL_INTERVAL_MS", EnvType.longInteger());
         CLIPBOARD_BACKEND = builder.optional("CLIPBOARD_BACKEND", EnvType.string());
         OFFLINE_FILE_LOCKER_SOCKET = builder.optional("OFFLINE_FILE_LOCKER_SOCKET", EnvType.string());
+        OFFLINE_SYNC_INTERVAL_MINUTES = builder.optional("OFFLINE_SYNC_INTERVAL_MINUTES", EnvType.longInteger());
         ENV = builder.build();
     }
 

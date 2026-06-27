@@ -220,7 +220,10 @@ The server returns `201 Created` with the saved entry id, client id, and timesta
 Authenticated clients can query their clipboard entries over an inclusive
 timeframe with `GET /clipboard?clientId=...&from=...&to=...`. The offline sync
 client uses this endpoint to upload only locally logged entries that are absent
-from the database. Run it with `./scripts/sync-offline-client.sh`.
+from the database. Optional `limit` (1-1000), `afterTimestamp`, and `afterId`
+parameters provide cursor pagination; both cursor parameters must be supplied
+together. Clipboard content is limited to 1,000,000 characters. Run the syncer
+with `./scripts/sync-offline-client.sh`.
 
 ## Tests
 

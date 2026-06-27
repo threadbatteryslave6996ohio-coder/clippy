@@ -19,13 +19,17 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.NavigableSet;
 import java.util.Set;
+import java.util.TreeSet;
 
 public final class OfflineClipboardSyncApp {
     private static final Path DEFAULT_OFFLINE_LOG = Path.of("clippy-offline-clipboard.json");
     static final Duration DEFAULT_SYNC_INTERVAL = Duration.ofMinutes(30);
+    private static final int REMOTE_PAGE_SIZE = 1_000;
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final HttpClient httpClient;
@@ -47,16 +51,18 @@ public final class OfflineClipboardSyncApp {
                 ? Path.of(env.get(ClientEnvs.OFFLINE_FILE_LOCKER_SOCKET))
                 : OfflineFileLockerClient.DEFAULT_SOCKET_PATH;
         OfflineFileLockerClient fileLocker = new OfflineFileLockerClient(fileLockerSocket);
-        fileLocker.ping();
-        RecordSource recordSource = () -> readClipboardRecords(offlineLog, fileLocker);
+        RecordSource recordSource = () -> readClipboardSnapshot(offlineLog, fileLocker);
+        Duration syncInterval = env.has(ClientEnvs.OFFLINE_SYNC_INTERVAL_MINUTES)
+                ? syncInterval(env.get(ClientEnvs.OFFLINE_SYNC_INTERVAL_MINUTES))
+                : DEFAULT_SYNC_INTERVAL;
         boolean clientIdConfigured = env.has(ClientEnvs.CLIENT_ID);
-        List<ClipboardRecord> records = awaitInitialRecords(
-                recordSource, !clientIdConfigured, DEFAULT_SYNC_INTERVAL, Thread::sleep);
+        ClipboardSnapshot initialSnapshot = awaitInitialSnapshot(
+                recordSource, !clientIdConfigured, syncInterval, Thread::sleep);
 
         String configuredClientId = clientIdConfigured
                 ? env.get(ClientEnvs.CLIENT_ID)
-                : singleClientId(records);
-        ensureRecordsBelongToClient(records, configuredClientId);
+                : singleClientId(initialSnapshot.records());
+        ensureRecordsBelongToClient(initialSnapshot.records(), configuredClientId);
 
         String authServerUrl = env.has(ClientEnvs.AUTH_SERVER_URL) ? env.get(ClientEnvs.AUTH_SERVER_URL) : null;
         String clientSecret = env.has(ClientEnvs.CLIENT_SECRET) ? env.get(ClientEnvs.CLIENT_SECRET) : null;
@@ -72,18 +78,20 @@ public final class OfflineClipboardSyncApp {
                 authSession
         );
         System.out.printf("Monitoring %s for offline clipboard changes every %d minutes.%n",
-                offlineLog.toAbsolutePath(), DEFAULT_SYNC_INTERVAL.toMinutes());
-        app.monitor(recordSource, records, DEFAULT_SYNC_INTERVAL, Thread::sleep);
+                offlineLog.toAbsolutePath(), syncInterval.toMinutes());
+        app.monitor(recordSource,
+                snapshot -> fileLocker.clearIfUnchanged(offlineLog, snapshot.content()),
+                initialSnapshot, syncInterval, Thread::sleep);
     }
 
-    static List<ClipboardRecord> awaitInitialRecords(RecordSource recordSource, boolean requireRecords,
-                                                       Duration interval, Sleeper sleeper)
+    static ClipboardSnapshot awaitInitialSnapshot(RecordSource recordSource, boolean requireRecords,
+                                                   Duration interval, Sleeper sleeper)
             throws InterruptedException {
         while (true) {
             try {
-                List<ClipboardRecord> records = List.copyOf(recordSource.read());
-                if (!requireRecords || !records.isEmpty()) {
-                    return records;
+                ClipboardSnapshot snapshot = recordSource.read();
+                if (!requireRecords || !snapshot.records().isEmpty()) {
+                    return snapshot;
                 }
                 System.out.printf("Offline clipboard file is empty; waiting %d minutes to derive CLIENT_ID.%n",
                         interval.toMinutes());
@@ -95,17 +103,19 @@ public final class OfflineClipboardSyncApp {
         }
     }
 
-    void monitor(RecordSource recordSource, List<ClipboardRecord> initialRecords,
-                 Duration interval, Sleeper sleeper) throws InterruptedException {
+    void monitor(RecordSource recordSource, SnapshotClearer snapshotClearer,
+                 ClipboardSnapshot initialSnapshot, Duration interval, Sleeper sleeper)
+            throws InterruptedException {
         if (interval.isZero() || interval.isNegative()) {
             throw new IllegalArgumentException("Sync interval must be positive.");
         }
 
-        List<ClipboardRecord> records = List.copyOf(initialRecords);
-        List<ClipboardRecord> lastSyncedRecords = null;
+        ClipboardSnapshot snapshot = initialSnapshot;
+        String lastProcessedContent = null;
         while (true) {
-            if (!records.equals(lastSyncedRecords)) {
+            if (!snapshot.content().equals(lastProcessedContent)) {
                 try {
+                    List<ClipboardRecord> records = snapshot.records();
                     if (records.isEmpty()) {
                         System.out.println("No offline clipboard entries to sync. Waiting for changes.");
                     } else {
@@ -113,7 +123,12 @@ public final class OfflineClipboardSyncApp {
                         System.out.printf("Offline clipboard sync complete. clientId=%s checked=%d alreadyPresent=%d sent=%d%n",
                                 clientId, records.size(), result.alreadyPresent(), result.sent());
                     }
-                    lastSyncedRecords = records;
+                    if (snapshotClearer.clear(snapshot)) {
+                        System.out.println("Cleared synchronized offline clipboard file.");
+                    } else {
+                        System.out.println("Offline clipboard file changed during sync; preserving it for the next pass.");
+                    }
+                    lastProcessedContent = snapshot.content();
                 } catch (IOException | RuntimeException exception) {
                     System.err.printf("Offline clipboard sync failed; will retry in %d minutes: %s%n",
                             interval.toMinutes(), exception.getMessage());
@@ -122,7 +137,7 @@ public final class OfflineClipboardSyncApp {
 
             sleeper.sleep(interval);
             try {
-                records = List.copyOf(recordSource.read());
+                snapshot = recordSource.read();
             } catch (IOException | RuntimeException exception) {
                 System.err.printf("Could not read offline clipboard file; will retry in %d minutes: %s%n",
                         interval.toMinutes(), exception.getMessage());
@@ -138,49 +153,53 @@ public final class OfflineClipboardSyncApp {
 
         Instant from = records.stream().map(ClipboardRecord::timestamp).min(Instant::compareTo).orElseThrow();
         Instant to = records.stream().map(ClipboardRecord::timestamp).max(Instant::compareTo).orElseThrow();
-        Set<RecordKey> remoteKeys = fetchRemoteKeys(from.minusNanos(1_000), to.plusNanos(1_000));
+        RemoteRecordIndex remoteRecords = fetchRemoteRecords(from.minusNanos(1_000), to.plusNanos(1_000));
         int alreadyPresent = 0;
         int sent = 0;
         for (ClipboardRecord record : records) {
             RecordKey key = record.key();
-            if (recordExists(remoteKeys, key)) {
+            if (remoteRecords.contains(key)) {
                 alreadyPresent++;
                 continue;
             }
             post(record);
-            remoteKeys.add(key);
+            remoteRecords.add(key);
             sent++;
         }
         return new SyncResult(alreadyPresent, sent);
     }
 
-    private static boolean recordExists(Set<RecordKey> remoteKeys, RecordKey candidate) {
-        return remoteKeys.stream().anyMatch(remote -> remote.clientId().equals(candidate.clientId())
-                && remote.content().equals(candidate.content())
-                && Duration.between(remote.timestamp(), candidate.timestamp()).abs()
-                .compareTo(Duration.ofNanos(1_000)) < 0);
-    }
+    private RemoteRecordIndex fetchRemoteRecords(Instant from, Instant to) throws IOException, InterruptedException {
+        RemoteRecordIndex records = new RemoteRecordIndex();
+        Instant afterTimestamp = null;
+        long afterId = 0;
+        while (true) {
+            String cursor = afterTimestamp == null ? "" : "&afterTimestamp=" + encode(afterTimestamp.toString())
+                    + "&afterId=" + afterId;
+            URI uri = URI.create(clipboardEndpoint + "?clientId=" + encode(clientId)
+                    + "&from=" + encode(from.toString()) + "&to=" + encode(to.toString())
+                    + "&limit=" + REMOTE_PAGE_SIZE + cursor);
+            HttpResponse<String> response = sendGet(uri);
+            if (response.statusCode() == 401 && authSession.canRefresh()) {
+                authSession.refresh();
+                response = sendGet(uri);
+            }
+            requireSuccess(response, "query clipboard entries");
 
-    private Set<RecordKey> fetchRemoteKeys(Instant from, Instant to) throws IOException, InterruptedException {
-        URI uri = URI.create(clipboardEndpoint + "?clientId=" + encode(clientId)
-                + "&from=" + encode(from.toString()) + "&to=" + encode(to.toString()));
-        HttpResponse<String> response = sendGet(uri);
-        if (response.statusCode() == 401 && authSession.canRefresh()) {
-            authSession.refresh();
-            response = sendGet(uri);
+            JsonNode root = JSON.readTree(response.body());
+            if (!root.isArray()) {
+                throw new IOException("Server returned a non-array clipboard response.");
+            }
+            for (JsonNode node : root) {
+                afterId = requiredLong(node, "id");
+                afterTimestamp = parseTimestamp(requiredText(node, "timestamp"), "server response");
+                records.add(new RecordKey(requiredText(node, "clientId"), requiredText(node, "content"),
+                        afterTimestamp));
+            }
+            if (root.size() < REMOTE_PAGE_SIZE) {
+                return records;
+            }
         }
-        requireSuccess(response, "query clipboard entries");
-
-        JsonNode root = JSON.readTree(response.body());
-        if (!root.isArray()) {
-            throw new IOException("Server returned a non-array clipboard response.");
-        }
-        Set<RecordKey> keys = new HashSet<>();
-        for (JsonNode node : root) {
-            keys.add(new RecordKey(requiredText(node, "clientId"), requiredText(node, "content"),
-                    parseTimestamp(requiredText(node, "timestamp"), "server response")));
-        }
-        return keys;
     }
 
     private void post(ClipboardRecord record) throws IOException, InterruptedException {
@@ -216,7 +235,12 @@ public final class OfflineClipboardSyncApp {
     }
 
     static List<ClipboardRecord> readClipboardRecords(Path path, OfflineFileLockerClient fileLocker) throws IOException {
-        return parseClipboardRecords(fileLocker.read(path), path);
+        return readClipboardSnapshot(path, fileLocker).records();
+    }
+
+    static ClipboardSnapshot readClipboardSnapshot(Path path, OfflineFileLockerClient fileLocker) throws IOException {
+        String content = fileLocker.read(path);
+        return new ClipboardSnapshot(content, parseClipboardRecords(content, path));
     }
 
     static List<ClipboardRecord> parseClipboardRecords(String content, Path path) throws IOException {
@@ -261,6 +285,14 @@ public final class OfflineClipboardSyncApp {
         return URI.create(trimmed.endsWith("/clipboard") ? trimmed : trimmed.replaceAll("/+$", "") + "/clipboard");
     }
 
+    private static Duration syncInterval(long minutes) {
+        if (minutes < 1) {
+            throw new IllegalArgumentException(ClientEnvs.OFFLINE_SYNC_INTERVAL_MINUTES.name()
+                    + " must be at least 1.");
+        }
+        return Duration.ofMinutes(minutes);
+    }
+
     private static String requiredText(JsonNode node, String field) throws IOException {
         JsonNode value = node.get(field);
         if (value == null || !value.isTextual()) {
@@ -275,6 +307,14 @@ public final class OfflineClipboardSyncApp {
         } catch (DateTimeParseException exception) {
             throw new IOException("Invalid timestamp in " + context + ": " + value, exception);
         }
+    }
+
+    private static long requiredLong(JsonNode node, String field) throws IOException {
+        JsonNode value = node.get(field);
+        if (value == null || !value.canConvertToLong()) {
+            throw new IOException("Clipboard JSON entry is missing integer field '" + field + "'.");
+        }
+        return value.longValue();
     }
 
     private static String encode(String value) {
@@ -296,9 +336,20 @@ public final class OfflineClipboardSyncApp {
     record SyncResult(int alreadyPresent, int sent) {
     }
 
+    record ClipboardSnapshot(String content, List<ClipboardRecord> records) {
+        ClipboardSnapshot {
+            records = List.copyOf(records);
+        }
+    }
+
     @FunctionalInterface
     interface RecordSource {
-        List<ClipboardRecord> read() throws IOException;
+        ClipboardSnapshot read() throws IOException;
+    }
+
+    @FunctionalInterface
+    interface SnapshotClearer {
+        boolean clear(ClipboardSnapshot snapshot) throws IOException;
     }
 
     @FunctionalInterface
@@ -307,5 +358,31 @@ public final class OfflineClipboardSyncApp {
     }
 
     private record RecordKey(String clientId, String content, Instant timestamp) {
+    }
+
+    private record RecordContentKey(String clientId, String content) {
+    }
+
+    private static final class RemoteRecordIndex {
+        private static final long TIMESTAMP_TOLERANCE_NANOS = 999;
+        private final Map<RecordContentKey, NavigableSet<Instant>> timestamps = new HashMap<>();
+
+        void add(RecordKey record) {
+            timestamps.computeIfAbsent(
+                    new RecordContentKey(record.clientId(), record.content()), ignored -> new TreeSet<>())
+                    .add(record.timestamp());
+        }
+
+        boolean contains(RecordKey candidate) {
+            NavigableSet<Instant> matchingTimestamps = timestamps.get(
+                    new RecordContentKey(candidate.clientId(), candidate.content()));
+            if (matchingTimestamps == null) {
+                return false;
+            }
+            Instant closest = matchingTimestamps.ceiling(
+                    candidate.timestamp().minusNanos(TIMESTAMP_TOLERANCE_NANOS));
+            return closest != null
+                    && !closest.isAfter(candidate.timestamp().plusNanos(TIMESTAMP_TOLERANCE_NANOS));
+        }
     }
 }

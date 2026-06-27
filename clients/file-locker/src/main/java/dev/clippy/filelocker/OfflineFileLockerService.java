@@ -83,6 +83,8 @@ public final class OfflineFileLockerService implements AutoCloseable {
                         appendLocked(path, FileLockerProtocol.readString(input));
                         yield "";
                     }
+                    case FileLockerProtocol.CLEAR_IF_UNCHANGED -> Boolean.toString(
+                            clearIfUnchangedLocked(path, FileLockerProtocol.readString(input)));
                     default -> throw new IOException("Unknown file-locker operation: " + operation);
                 };
                 output.writeByte(FileLockerProtocol.OK);
@@ -125,6 +127,21 @@ public final class OfflineFileLockerService implements AutoCloseable {
                 updated = beforeEnd + separator + "  " + jsonEntry + "\n]\n";
             }
             atomicWrite(path, updated);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private boolean clearIfUnchangedLocked(Path path, String expectedContent) throws IOException {
+        ReentrantReadWriteLock.WriteLock lock = lockFor(path).writeLock();
+        lock.lock();
+        try {
+            String currentContent = Files.readString(path, StandardCharsets.UTF_8);
+            if (!currentContent.equals(expectedContent)) {
+                return false;
+            }
+            atomicWrite(path, "[]\n");
+            return true;
         } finally {
             lock.unlock();
         }

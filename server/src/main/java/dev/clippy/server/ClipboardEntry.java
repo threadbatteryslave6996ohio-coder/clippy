@@ -5,12 +5,15 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
 
 @Entity
-@Table(name = "clipboard_entries")
+@Table(name = "clipboard_entries", indexes = {
+        @Index(name = "idx_clipboard_client_timestamp", columnList = "client_id, entry_timestamp")
+})
 public class ClipboardEntry {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

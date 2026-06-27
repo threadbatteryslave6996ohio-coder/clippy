@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OfflineFileLockerServiceTest {
@@ -64,6 +65,13 @@ class OfflineFileLockerServiceTest {
             assertTrue(content.startsWith("[\n"));
             assertTrue(content.endsWith("]\n"));
             assertEquals(entryCount, content.split("\\{\\\"value\\\":", -1).length - 1);
+
+            client.append(log, "{\"value\":40}");
+            assertFalse(client.clearIfUnchanged(log, content));
+            String updatedContent = client.read(log);
+            assertEquals(entryCount + 1, updatedContent.split("\\{\\\"value\\\":", -1).length - 1);
+            assertTrue(client.clearIfUnchanged(log, updatedContent));
+            assertEquals("[]\n", client.read(log));
         } finally {
             service.close();
             serviceThread.join(Duration.ofSeconds(5));
