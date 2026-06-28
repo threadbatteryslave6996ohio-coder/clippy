@@ -2,6 +2,8 @@
 
 Clippy records text clipboard changes from desktop and Android clients in a Spring Boot server backed by PostgreSQL.
 
+The `auth/` directory is a git submodule. After cloning, run `git submodule update --init --recursive` before building.
+
 Client-specific docs:
 
 - Auth server: [auth/server/README.md](auth/server/README.md)
