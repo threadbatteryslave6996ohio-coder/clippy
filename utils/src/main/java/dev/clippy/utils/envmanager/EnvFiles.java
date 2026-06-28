@@ -31,8 +31,12 @@ public final class EnvFiles {
         return loadDotenv(startDirectory);
     }
 
+    public static Map<String, String> loadFile(Path dotenvFile) throws IOException {
+        return loadDotenv(dotenvFile);
+    }
+
     private static Map<String, String> loadDotenv(Path startDirectory) throws IOException {
-        Path path = findDotenv(startDirectory);
+        Path path = Files.isRegularFile(startDirectory) ? startDirectory : findDotenv(startDirectory);
         if (path == null) {
             return Map.of();
         }

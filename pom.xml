@@ -13,6 +13,7 @@
         <module>auth/client</module>
         <module>server</module>
         <module>auth/server</module>
+        <module>combined-server</module>
         <module>clients/client-envs</module>
         <module>clients/file-locker</module>
         <module>clients/mac</module>

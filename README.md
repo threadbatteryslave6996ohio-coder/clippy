@@ -54,7 +54,7 @@ Build and run the app server in another terminal:
 ```bash
 cd ~/Desktop/clippy
 mvn -pl server -am package
-java -jar server/target/clippy-server-0.1.0-SNAPSHOT.jar
+java -jar server/target/clippy-server-0.1.0-SNAPSHOT-exec.jar
 ```
 
 The auth server listens on `http://localhost:8081` and the app server listens on `http://localhost:8080` by default. Both servers read their settings from the repository root `.env` through the shared env manager.

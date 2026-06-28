@@ -35,4 +35,21 @@ class EnvFilesTest {
         assertEquals("clippy-client", values.get("CLIENT_ID"));
         assertEquals("token-123", values.get("CLIENT_TOKEN"));
     }
+
+    @Test
+    void loadsValuesFromExplicitDotenvFile() throws IOException {
+        Path dotenvFile = tempDir.resolve("combined.env");
+        Files.writeString(
+                dotenvFile,
+                """
+                        COMBINED_SERVER_PORT=8080
+                        CLIPPY_AUTH_ROUTE_PREFIX=/auth
+                        """
+        );
+
+        Map<String, String> values = EnvFiles.loadFile(dotenvFile);
+
+        assertEquals("8080", values.get("COMBINED_SERVER_PORT"));
+        assertEquals("/auth", values.get("CLIPPY_AUTH_ROUTE_PREFIX"));
+    }
 }

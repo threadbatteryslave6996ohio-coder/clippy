@@ -42,7 +42,7 @@ Build and run this app server from the repository root in another terminal:
 ```bash
 cd ~/Desktop/clippy
 mvn -pl server -am package
-java -jar server/target/clippy-server-0.1.0-SNAPSHOT.jar
+java -jar server/target/clippy-server-0.1.0-SNAPSHOT-exec.jar
 ```
 
 Or, if your shell is already in `~/Desktop/clippy/server`, invoke Maven from the root POM so it can include the auth client module:
@@ -50,7 +50,7 @@ Or, if your shell is already in `~/Desktop/clippy/server`, invoke Maven from the
 ```bash
 cd ~/Desktop/clippy/server
 mvn -f ../pom.xml -pl server -am package
-java -jar target/clippy-server-0.1.0-SNAPSHOT.jar
+java -jar target/clippy-server-0.1.0-SNAPSHOT-exec.jar
 ```
 
 The app server listens on `http://localhost:8080` by default. The auth server listens on `http://localhost:8081` by default.
