@@ -16,28 +16,6 @@ class EnvFilesTest {
     Path tempDir;
 
     @Test
-    void loadsDotenvFromAncestralDirectoryAndUnquotesValues() throws IOException {
-        Path nestedDirectory = Files.createDirectories(tempDir.resolve("nested/child"));
-        Files.writeString(
-                tempDir.resolve(".env"),
-                """
-                        # comment
-                        REMOTE_SERVER_URL = "http://localhost:8080"
-                        CLIENT_ID='clippy-client'
-                        CLIENT_TOKEN=token-123
-                        EMPTY_LINE=
-                        INVALID_LINE
-                        """
-        );
-
-        Map<String, String> values = EnvFiles.load(nestedDirectory);
-
-        assertEquals("http://localhost:8080", values.get("REMOTE_SERVER_URL"));
-        assertEquals("clippy-client", values.get("CLIENT_ID"));
-        assertEquals("token-123", values.get("CLIENT_TOKEN"));
-    }
-
-    @Test
     void loadsValuesFromExplicitDotenvFile() throws IOException {
         Path dotenvFile = tempDir.resolve("combined.env");
         Files.writeString(

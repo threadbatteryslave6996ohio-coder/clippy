@@ -16,6 +16,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -28,15 +30,15 @@ import static org.assertj.core.api.Assertions.assertThat;
         classes = CombinedServerApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT,
         properties = {
-                "server.port=18080",
                 "clippy.auth.route-prefix=/auth",
                 "clippy.server.route-prefix=/api",
-                "clippy.auth.base-url=http://localhost:18080/auth",
                 "clippy.auth.jpa.hibernate.ddl-auto=create-drop",
                 "clippy.clipboard.jpa.hibernate.ddl-auto=create-drop"
         }
 )
 class CombinedServerHttpIntegrationTest {
+    static final int SERVER_PORT = reservePort();
+
     @Container
     static final PostgreSQLContainer<?> authPostgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
@@ -45,6 +47,8 @@ class CombinedServerHttpIntegrationTest {
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
+        registry.add("server.port", () -> SERVER_PORT);
+        registry.add("clippy.auth.base-url", () -> "http://localhost:" + SERVER_PORT + "/auth");
         registry.add("AUTH_DATASOURCE_URL", authPostgres::getJdbcUrl);
         registry.add("AUTH_DATASOURCE_USERNAME", authPostgres::getUsername);
         registry.add("AUTH_DATASOURCE_PASSWORD", authPostgres::getPassword);
@@ -170,5 +174,16 @@ class CombinedServerHttpIntegrationTest {
         int valueStart = start + marker.length();
         int valueEnd = json.indexOf('"', valueStart);
         return json.substring(valueStart, valueEnd);
+    }
+
+    private static int reservePort() {
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try (ServerSocket socket = new ServerSocket(0, 0, InetAddress.getLoopbackAddress())) {
+                return socket.getLocalPort();
+            } catch (IOException ignored) {
+                // Retry with another ephemeral port.
+            }
+        }
+        throw new IllegalStateException("No port is available after 3 attempts.");
     }
 }

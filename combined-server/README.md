@@ -4,7 +4,7 @@ Spring Boot deployment target that runs the auth routes and clipboard routes in 
 
 ## Start Locally
 
-Create a `.env` file in `combined-server/` or point `CLIPPY_ENV_FILE` at one:
+Create a `.env` file in `combined-server/` or point `CLIPPY_ENV_FILE` at one. The combined server only reads that file and fails fast if it is missing:
 
 ```dotenv
 COMBINED_SERVER_PORT=8080
@@ -22,7 +22,6 @@ CLIPPY_AUTH_ROUTE_PREFIX=/auth
 CLIPPY_SERVER_ROUTE_PREFIX=/api
 
 LOGGING_FILE_NAME=logs/clippy-combined-server.log
-AUTH_LOGGING_FILE_NAME=logs/clippy-auth-server.log
 ```
 
 Build and run from the repository root:

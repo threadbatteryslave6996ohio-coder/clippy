@@ -35,6 +35,13 @@ public final class EnvFiles {
         return loadDotenv(dotenvFile);
     }
 
+    public static Map<String, String> loadRequiredFile(Path dotenvFile) throws IOException {
+        if (!Files.isRegularFile(dotenvFile)) {
+            throw new IllegalStateException("Env file is not present: " + dotenvFile.toAbsolutePath().normalize());
+        }
+        return loadDotenv(dotenvFile);
+    }
+
     private static Map<String, String> loadDotenv(Path startDirectory) throws IOException {
         Path path = Files.isRegularFile(startDirectory) ? startDirectory : findDotenv(startDirectory);
         if (path == null) {

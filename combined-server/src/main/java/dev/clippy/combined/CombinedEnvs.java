@@ -7,10 +7,8 @@ import dev.clippy.utils.envmanager.EnvSchema;
 import dev.clippy.utils.envmanager.EnvType;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
+import java.net.URISyntaxException;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.Map;
 
 public final class CombinedEnvs {
@@ -25,7 +23,6 @@ public final class CombinedEnvs {
     public static final EnvOption<String> CLIPPY_AUTH_ROUTE_PREFIX;
     public static final EnvOption<String> CLIPPY_SERVER_ROUTE_PREFIX;
     public static final EnvOption<String> LOGGING_FILE_NAME;
-    public static final EnvOption<String> AUTH_LOGGING_FILE_NAME;
     public static final EnvSchema ENV;
 
     static {
@@ -43,7 +40,6 @@ public final class CombinedEnvs {
         CLIPPY_AUTH_ROUTE_PREFIX = builder.optional("CLIPPY_AUTH_ROUTE_PREFIX", EnvType.string(), "/auth");
         CLIPPY_SERVER_ROUTE_PREFIX = builder.optional("CLIPPY_SERVER_ROUTE_PREFIX", EnvType.string(), "/api");
         LOGGING_FILE_NAME = builder.optional("LOGGING_FILE_NAME", EnvType.string(), "logs/clippy-combined-server.log");
-        AUTH_LOGGING_FILE_NAME = builder.optional("AUTH_LOGGING_FILE_NAME", EnvType.string(), "logs/clippy-auth-server.log");
         ENV = builder.build();
     }
 
@@ -52,50 +48,30 @@ public final class CombinedEnvs {
 
     public static Env load() throws IOException {
         String explicitFile = System.getenv("CLIPPY_ENV_FILE");
-        if (explicitFile != null && !explicitFile.isBlank()) {
-            return from(loadExplicitFile(Path.of(explicitFile.trim())));
-        }
-        return from(EnvFiles.loadDotenvOnly(Path.of("").toAbsolutePath()));
+        Path envFile = explicitFile != null && !explicitFile.isBlank()
+                ? Path.of(explicitFile.trim())
+                : defaultEnvFile();
+        return from(EnvFiles.loadRequiredFile(envFile));
     }
 
     public static Env from(Map<String, String> source) {
         return ENV.from(source);
     }
 
-    private static Map<String, String> loadExplicitFile(Path dotenvFile) throws IOException {
-        if (!Files.isRegularFile(dotenvFile)) {
-            return Map.of();
+    static Path defaultEnvFile() throws IOException {
+        try {
+            Path codeSourceLocation = Path.of(
+                    CombinedEnvs.class.getProtectionDomain().getCodeSource().getLocation().toURI()
+            ).toAbsolutePath().normalize();
+            Path moduleDirectory = codeSourceLocation.getParent() == null
+                    ? null
+                    : codeSourceLocation.getParent().getParent();
+            if (moduleDirectory == null) {
+                throw new IOException("Unable to resolve combined-server module directory from " + codeSourceLocation);
+            }
+            return moduleDirectory.resolve(".env");
+        } catch (URISyntaxException e) {
+            throw new IOException("Unable to resolve combined-server env file location", e);
         }
-
-        Map<String, String> values = new HashMap<>();
-        for (String line : Files.readAllLines(dotenvFile, StandardCharsets.UTF_8)) {
-            String trimmed = line.trim();
-            if (trimmed.isEmpty() || trimmed.startsWith("#")) {
-                continue;
-            }
-
-            int separator = trimmed.indexOf('=');
-            if (separator <= 0) {
-                continue;
-            }
-
-            String key = trimmed.substring(0, separator).trim();
-            String value = unquote(trimmed.substring(separator + 1).trim());
-            if (!key.isEmpty()) {
-                values.put(key, value);
-            }
-        }
-        return values;
-    }
-
-    private static String unquote(String value) {
-        if (value.length() >= 2) {
-            char first = value.charAt(0);
-            char last = value.charAt(value.length() - 1);
-            if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
-                return value.substring(1, value.length() - 1);
-            }
-        }
-        return value;
     }
 }

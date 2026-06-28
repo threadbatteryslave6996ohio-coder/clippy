@@ -211,7 +211,6 @@ SPRING_DATASOURCE_URL=jdbc:postgresql://dbhost:5432/clippy_app
 SPRING_DATASOURCE_USERNAME=clippy_app
 SPRING_DATASOURCE_PASSWORD=replace-me
 
-AUTH_LOGGING_FILE_NAME=logs/clippy-auth-server.log
 LOGGING_FILE_NAME=logs/clippy-server.log
 
 CLIPPY_AUTH_BASE_URL=http://localhost:8080/auth
