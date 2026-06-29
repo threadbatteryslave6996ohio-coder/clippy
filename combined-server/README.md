@@ -32,6 +32,10 @@ cd combined-server
 java -jar target/clippy-combined-server-0.1.0-SNAPSHOT.jar
 ```
 
+The launcher parses the selected file and passes the resolved values to Spring as
+application defaults. Explicit command-line arguments such as `--server.port=9090`
+or `--clippy.auth.datasource.url=jdbc:postgresql://host/auth` take precedence.
+
 The combined server exposes:
 
 - `POST /auth/identities`

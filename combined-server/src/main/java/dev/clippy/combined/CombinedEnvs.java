@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 public final class CombinedEnvs {
@@ -52,11 +53,31 @@ public final class CombinedEnvs {
         Path envFile = explicitFile != null && !explicitFile.isBlank()
                 ? Path.of(explicitFile.trim())
                 : defaultEnvFile();
+        return loadFromFile(envFile);
+    }
+
+    static Env loadFromFile(Path envFile) throws IOException {
         return from(EnvFiles.loadRequiredFile(envFile));
     }
 
     public static Env from(Map<String, String> source) {
         return ENV.from(source);
+    }
+
+    static Map<String, Object> springDefaults(Env env) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("server.port", env.get(COMBINED_SERVER_PORT));
+        values.put("clippy.auth.datasource.url", env.get(AUTH_DATASOURCE_URL));
+        values.put("clippy.auth.datasource.username", env.get(AUTH_DATASOURCE_USERNAME));
+        values.put("clippy.auth.datasource.password", env.get(AUTH_DATASOURCE_PASSWORD));
+        values.put("spring.datasource.url", env.get(SPRING_DATASOURCE_URL));
+        values.put("spring.datasource.username", env.get(SPRING_DATASOURCE_USERNAME));
+        values.put("spring.datasource.password", env.get(SPRING_DATASOURCE_PASSWORD));
+        values.put("clippy.auth.base-url", env.get(CLIPPY_AUTH_BASE_URL));
+        values.put("clippy.auth.route-prefix", env.get(CLIPPY_AUTH_ROUTE_PREFIX));
+        values.put("clippy.server.route-prefix", env.get(CLIPPY_SERVER_ROUTE_PREFIX));
+        values.put("logging.file.name", env.get(LOGGING_FILE_NAME));
+        return values;
     }
 
     static Path defaultEnvFile() throws IOException {

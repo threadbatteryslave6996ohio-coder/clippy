@@ -49,12 +49,12 @@ class CombinedServerHttpIntegrationTest {
     static void databaseProperties(DynamicPropertyRegistry registry) {
         registry.add("server.port", () -> SERVER_PORT);
         registry.add("clippy.auth.base-url", () -> "http://localhost:" + SERVER_PORT + "/auth");
-        registry.add("AUTH_DATASOURCE_URL", authPostgres::getJdbcUrl);
-        registry.add("AUTH_DATASOURCE_USERNAME", authPostgres::getUsername);
-        registry.add("AUTH_DATASOURCE_PASSWORD", authPostgres::getPassword);
-        registry.add("SPRING_DATASOURCE_URL", clipboardPostgres::getJdbcUrl);
-        registry.add("SPRING_DATASOURCE_USERNAME", clipboardPostgres::getUsername);
-        registry.add("SPRING_DATASOURCE_PASSWORD", clipboardPostgres::getPassword);
+        registry.add("clippy.auth.datasource.url", authPostgres::getJdbcUrl);
+        registry.add("clippy.auth.datasource.username", authPostgres::getUsername);
+        registry.add("clippy.auth.datasource.password", authPostgres::getPassword);
+        registry.add("spring.datasource.url", clipboardPostgres::getJdbcUrl);
+        registry.add("spring.datasource.username", clipboardPostgres::getUsername);
+        registry.add("spring.datasource.password", clipboardPostgres::getPassword);
     }
 
     @LocalServerPort

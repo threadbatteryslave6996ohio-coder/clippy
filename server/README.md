@@ -57,7 +57,7 @@ The app server listens on `http://localhost:8080` by default. The auth server li
 
 ## Configuration
 
-The server loads configuration from a `.env` file in the current directory or any parent directory. The shared env manager handles this loading, and shell exports are ignored for server startup.
+The server loads configuration from a `.env` file in the current directory or any parent directory. The launcher converts the file values into Spring application defaults instead of exposing the env loader to the service classes.
 
 The default local configuration matches the local development settings:
 
@@ -70,6 +70,8 @@ CLIPPY_AUTH_BASE_URL=http://localhost:8081
 ```
 
 Set those values in `.env` before running Maven to override them.
+Explicit Spring configuration, including shell exports and command-line arguments
+such as `--server.port=9090`, takes precedence over the file-derived defaults.
 
 ## Endpoint
 

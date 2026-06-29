@@ -44,12 +44,12 @@ public final class ServerEnvs {
 
     public static Map<String, Object> springDefaults(Env env) {
         Map<String, Object> values = new HashMap<>();
-        values.put("SPRING_DATASOURCE_URL", env.get(SPRING_DATASOURCE_URL));
-        values.put("SPRING_DATASOURCE_USERNAME", env.get(SPRING_DATASOURCE_USERNAME));
-        values.put("SPRING_DATASOURCE_PASSWORD", env.get(SPRING_DATASOURCE_PASSWORD));
-        values.put("SERVER_PORT", env.get(SERVER_PORT));
-        values.put("CLIPPY_AUTH_BASE_URL", env.get(CLIPPY_AUTH_BASE_URL));
-        values.put("LOGGING_FILE_NAME", env.get(LOGGING_FILE_NAME));
+        values.put("spring.datasource.url", env.get(SPRING_DATASOURCE_URL));
+        values.put("spring.datasource.username", env.get(SPRING_DATASOURCE_USERNAME));
+        values.put("spring.datasource.password", env.get(SPRING_DATASOURCE_PASSWORD));
+        values.put("server.port", env.get(SERVER_PORT));
+        values.put("clippy.auth.base-url", env.get(CLIPPY_AUTH_BASE_URL));
+        values.put("logging.file.name", env.get(LOGGING_FILE_NAME));
         return values;
     }
 }

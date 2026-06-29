@@ -32,9 +32,9 @@ class CombinedAuthDatabaseConfiguration {
         return DataSourceBuilder.create()
                 .type(HikariDataSource.class)
                 .driverClassName("org.postgresql.Driver")
-                .url(environment.getRequiredProperty("AUTH_DATASOURCE_URL"))
-                .username(environment.getRequiredProperty("AUTH_DATASOURCE_USERNAME"))
-                .password(environment.getRequiredProperty("AUTH_DATASOURCE_PASSWORD"))
+                .url(environment.getRequiredProperty("clippy.auth.datasource.url"))
+                .username(environment.getRequiredProperty("clippy.auth.datasource.username"))
+                .password(environment.getRequiredProperty("clippy.auth.datasource.password"))
                 .build();
     }
 

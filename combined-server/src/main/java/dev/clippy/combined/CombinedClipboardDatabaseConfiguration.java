@@ -34,9 +34,9 @@ class CombinedClipboardDatabaseConfiguration {
         return DataSourceBuilder.create()
                 .type(HikariDataSource.class)
                 .driverClassName("org.postgresql.Driver")
-                .url(environment.getRequiredProperty("SPRING_DATASOURCE_URL"))
-                .username(environment.getRequiredProperty("SPRING_DATASOURCE_USERNAME"))
-                .password(environment.getRequiredProperty("SPRING_DATASOURCE_PASSWORD"))
+                .url(environment.getRequiredProperty("spring.datasource.url"))
+                .username(environment.getRequiredProperty("spring.datasource.username"))
+                .password(environment.getRequiredProperty("spring.datasource.password"))
                 .build();
     }
 

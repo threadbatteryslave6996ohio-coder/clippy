@@ -63,4 +63,24 @@ class EnvFilesTest {
 
         assertEquals("Env file is not present: " + dotenvFile.toAbsolutePath().normalize(), exception.getMessage());
     }
+
+    @Test
+    void loadingDoesNotDependOnCustomLoggerDirectory() throws IOException {
+        Path dotenvFile = tempDir.resolve("service.env");
+        Path nonDirectoryLogTarget = tempDir.resolve("not-a-directory");
+        Files.writeString(dotenvFile, "SERVER_PORT=9090\n");
+        Files.writeString(nonDirectoryLogTarget, "file");
+        String originalLoggerDirectory = System.getProperty("custom.logger.dir");
+        System.setProperty("custom.logger.dir", nonDirectoryLogTarget.toString());
+
+        try {
+            assertEquals("9090", EnvFiles.loadRequiredFile(dotenvFile).get("SERVER_PORT"));
+        } finally {
+            if (originalLoggerDirectory == null) {
+                System.clearProperty("custom.logger.dir");
+            } else {
+                System.setProperty("custom.logger.dir", originalLoggerDirectory);
+            }
+        }
+    }
 }

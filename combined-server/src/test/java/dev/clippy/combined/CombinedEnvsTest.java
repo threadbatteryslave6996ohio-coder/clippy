@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -51,5 +52,18 @@ class CombinedEnvsTest {
 
         assertThat(CombinedServerApplication.startupErrorMessage(error))
                 .isEqualTo("Combined server startup error: Missing combined server env file. Create combined-server/.env or set CLIPPY_ENV_FILE to its absolute path.");
+    }
+
+    @Test
+    void exposesResolvedValuesAsSpringApplicationProperties() {
+        var env = CombinedEnvs.from(Map.of("COMBINED_SERVER_PORT", "9090"));
+
+        assertThat(CombinedEnvs.springDefaults(env))
+                .containsEntry("server.port", "9090")
+                .containsEntry("clippy.auth.datasource.url", "jdbc:postgresql://localhost:5433/auth")
+                .containsEntry("spring.datasource.url", "jdbc:postgresql://localhost:5432/clippy")
+                .containsEntry("clippy.auth.route-prefix", "/auth")
+                .containsEntry("clippy.server.route-prefix", "/api")
+                .containsEntry("logging.file.name", "logs/clippy-combined-server.log");
     }
 }
