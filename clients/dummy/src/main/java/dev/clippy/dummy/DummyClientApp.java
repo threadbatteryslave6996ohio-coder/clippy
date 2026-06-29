@@ -22,12 +22,12 @@ public final class DummyClientApp {
     private final HttpClient httpClient;
     private final URI endpoint;
     private final String clientId;
-    private final String clientToken;
+    private final ClientAuthSession authSession;
 
-    private DummyClientApp(URI endpoint, String clientId, String clientToken) {
+    private DummyClientApp(URI endpoint, String clientId, ClientAuthSession authSession) {
         this.endpoint = endpoint;
         this.clientId = clientId;
-        this.clientToken = clientToken;
+        this.authSession = authSession;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
@@ -35,10 +35,26 @@ public final class DummyClientApp {
 
     public static void main(String[] args) throws IOException, InterruptedException {
         Env env = ClientEnvs.load();
+        String authServerUrl = env.has(ClientEnvs.AUTH_SERVER_URL) ? env.get(ClientEnvs.AUTH_SERVER_URL) : null;
+        String clientId = env.has(ClientEnvs.CLIENT_ID) ? env.get(ClientEnvs.CLIENT_ID) : defaultClientId();
+        String clientSecret = env.has(ClientEnvs.CLIENT_SECRET) ? env.get(ClientEnvs.CLIENT_SECRET) : null;
+        String clientToken = env.has(ClientEnvs.CLIENT_TOKEN) ? env.get(ClientEnvs.CLIENT_TOKEN) : null;
+
+        ClientAuthSession authSession = new ClientAuthSession(authServerUrl, clientId, clientSecret, clientToken);
+        if (authSession.canRefresh()) {
+            if (authServerUrl == null) {
+                throw new IllegalStateException("AUTH_SERVER_URL is required when CLIENT_SECRET is set.");
+            }
+            System.out.printf("Refreshing auth token from %s for clientId=%s%n", authServerUrl, clientId);
+            authSession.refresh();
+        } else if (!authSession.hasToken()) {
+            throw new IllegalStateException("Set CLIENT_SECRET for auth login or CLIENT_TOKEN for a static token.");
+        }
+
         DummyClientApp app = new DummyClientApp(
                 clipboardEndpoint(env.get(ClientEnvs.REMOTE_SERVER_URL)),
-                env.has(ClientEnvs.CLIENT_ID) ? env.get(ClientEnvs.CLIENT_ID) : defaultClientId(),
-                env.get(ClientEnvs.CLIENT_TOKEN)
+                clientId,
+                authSession
         );
 
         if (args.length > 0) {
@@ -60,7 +76,12 @@ public final class DummyClientApp {
 
     private boolean sendCommand(String command) {
         try {
-            int statusCode = send(command);
+            int statusCode = send(command, authSession.token());
+            if (statusCode == 401 && authSession.canRefresh()) {
+                System.err.printf("Remote server rejected the bearer token with HTTP 401. Refreshing from auth server. endpoint=%s%n", endpoint);
+                authSession.refresh();
+                statusCode = send(command, authSession.token());
+            }
             if (statusCode < 200 || statusCode >= 300) {
                 System.err.printf("Remote server rejected command. endpoint=%s httpStatus=%d%n", endpoint, statusCode);
                 return false;
@@ -78,7 +99,7 @@ public final class DummyClientApp {
         }
     }
 
-    private int send(String command) throws IOException, InterruptedException {
+    private int send(String command, String clientToken) throws IOException, InterruptedException {
         String json = """
                 {"clientId":"%s","content":"%s","timestamp":"%s"}"""
                 .formatted(jsonEscape(clientId), jsonEscape(command), Instant.now());

@@ -20,19 +20,16 @@ From the repository root:
 
    Start the auth database on port `5433` and the app database on port `5432` using your preferred local PostgreSQL setup, then run the auth server and app server.
 
-2. Create a client identity and login.
+2. Create a client identity.
 
    ```bash
    curl -i http://localhost:8081/identities \
      -H 'Content-Type: application/json' \
      -d '{"clientId":"dummy","secret":"change-me-please"}'
-
-   curl -s http://localhost:8081/login \
-     -H 'Content-Type: application/json' \
-     -d '{"clientId":"dummy","secret":"change-me-please"}'
    ```
 
-   Copy the returned `token` value into `CLIENT_TOKEN`.
+   The client logs in with this identity itself, so you do not need to call
+   `/login` and copy a token by hand.
 
 3. Configure the client.
 
@@ -40,13 +37,19 @@ From the repository root:
 
    ```dotenv
    REMOTE_SERVER_URL=http://localhost:8080
+   AUTH_SERVER_URL=http://localhost:8081
    CLIENT_ID=dummy
-   CLIENT_TOKEN=token-from-auth-login
+   CLIENT_SECRET=change-me-please
    ```
 
    `REMOTE_SERVER_URL` is required. It may be either the server base URL, such as `http://localhost:8080`, or the full endpoint, such as `http://localhost:8080/clipboard`.
 
-   `CLIENT_TOKEN` is required. `CLIENT_ID` is optional and defaults to `dummy-` plus the machine hostname, with a random fallback if hostname lookup fails.
+   `CLIENT_SECRET` lets the client log in to the auth server with its identity and
+   refresh the token automatically on a `401`. `AUTH_SERVER_URL` is required when
+   `CLIENT_SECRET` is set. If you prefer a static token instead, leave
+   `CLIENT_SECRET` unset and provide `CLIENT_TOKEN` (the token returned by the auth
+   server `/login` endpoint). `CLIENT_ID` is optional and defaults to `dummy-` plus
+   the machine hostname, with a random fallback if hostname lookup fails.
 
    Shell environment variables override values from `.env` when both are set.
 
@@ -80,7 +83,8 @@ java -jar clients/dummy/target/clippy-dummy-client-0.1.0-SNAPSHOT.jar "ping"
 Or override `.env` from the shell:
 
 ```bash
-REMOTE_SERVER_URL=http://localhost:8080 CLIENT_ID=dummy CLIENT_TOKEN=token-from-auth-login \
+REMOTE_SERVER_URL=http://localhost:8080 AUTH_SERVER_URL=http://localhost:8081 \
+  CLIENT_ID=dummy CLIENT_SECRET=change-me-please \
   java -jar clients/dummy/target/clippy-dummy-client-0.1.0-SNAPSHOT.jar "ping"
 ```
 
