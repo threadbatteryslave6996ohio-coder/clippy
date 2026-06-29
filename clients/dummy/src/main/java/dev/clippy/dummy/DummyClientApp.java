@@ -1,5 +1,6 @@
 package dev.clippy.dummy;
 
+import dev.clippy.clients.envs.ClientAuthSession;
 import dev.clippy.clients.envs.ClientEnvs;
 import dev.clippy.utils.envmanager.Env;
 

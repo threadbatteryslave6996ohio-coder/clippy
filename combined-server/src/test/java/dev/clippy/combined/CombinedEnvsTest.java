@@ -2,6 +2,8 @@ package dev.clippy.combined;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.boot.env.YamlPropertySourceLoader;
+import org.springframework.core.io.ClassPathResource;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -65,5 +67,21 @@ class CombinedEnvsTest {
                 .containsEntry("clippy.auth.route-prefix", "/auth")
                 .containsEntry("clippy.server.route-prefix", "/api")
                 .containsEntry("logging.file.name", "logs/clippy-combined-server.log");
+    }
+
+    @Test
+    void packagedConfigurationDoesNotOverrideValuesPassedByTheLauncher() throws IOException {
+        var propertySources = new YamlPropertySourceLoader().load(
+                "serverApplication",
+                new ClassPathResource("application.yml")
+        );
+
+        assertThat(propertySources).allSatisfy(properties -> {
+            assertThat(properties.getProperty("spring.datasource.url")).isNull();
+            assertThat(properties.getProperty("spring.datasource.username")).isNull();
+            assertThat(properties.getProperty("spring.datasource.password")).isNull();
+            assertThat(properties.getProperty("server.port")).isNull();
+            assertThat(properties.getProperty("logging.file.name")).isNull();
+        });
     }
 }
