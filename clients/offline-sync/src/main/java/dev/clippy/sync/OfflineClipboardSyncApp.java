@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +31,9 @@ import java.util.TreeSet;
 public final class OfflineClipboardSyncApp {
     private static final Path DEFAULT_OFFLINE_LOG = Path.of("clippy-offline-clipboard.json");
     static final Duration DEFAULT_SYNC_INTERVAL = Duration.ofMinutes(30);
+    static final Duration INITIAL_RETRY_DELAY = Duration.ofSeconds(5);
+    static final Duration MAX_RETRY_DELAY = Duration.ofMinutes(5);
+    static final int MAX_RETRIES = 5;
     private static final int REMOTE_PAGE_SIZE = 1_000;
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -53,19 +57,22 @@ public final class OfflineClipboardSyncApp {
                 : OfflineFileLockerClient.DEFAULT_SOCKET_PATH;
         OfflineFileLockerClient fileLocker = new OfflineFileLockerClient(fileLockerSocket);
         RecordSource recordSource = () -> readClipboardSnapshot(offlineLog, fileLocker);
+        Path deadLetterLog = deadLetterPath(offlineLog);
+        RejectionSink rejectionSink = rejection -> fileLocker.append(deadLetterLog, rejection.toJson());
+        SnapshotClearer snapshotClearer = snapshot -> fileLocker.clearIfUnchanged(offlineLog, snapshot.content());
         Duration syncInterval = env.has(ClientEnvs.OFFLINE_SYNC_INTERVAL_MINUTES)
                 ? syncInterval(env.get(ClientEnvs.OFFLINE_SYNC_INTERVAL_MINUTES))
                 : DEFAULT_SYNC_INTERVAL;
         boolean clientIdConfigured = env.has(ClientEnvs.CLIENT_ID);
         ClipboardSnapshot initialSnapshot = clientIdConfigured
-                ? awaitInitialSnapshot(recordSource, syncInterval, Thread::sleep)
-                : awaitInitialSyncableSnapshot(recordSource, syncInterval, Thread::sleep);
+                ? awaitInitialSnapshot(recordSource, Thread::sleep)
+                : awaitInitialSyncableSnapshot(
+                        recordSource, rejectionSink, snapshotClearer, syncInterval, Thread::sleep);
         List<ClipboardRecord> initialSyncableRecords = syncableRecords(initialSnapshot.records(), false);
 
         String configuredClientId = clientIdConfigured
                 ? env.get(ClientEnvs.CLIENT_ID)
                 : singleClientId(initialSyncableRecords);
-        ensureRecordsBelongToClient(initialSyncableRecords, configuredClientId);
 
         String authServerUrl = env.has(ClientEnvs.AUTH_SERVER_URL) ? env.get(ClientEnvs.AUTH_SERVER_URL) : null;
         String clientSecret = env.has(ClientEnvs.CLIENT_SECRET) ? env.get(ClientEnvs.CLIENT_SECRET) : null;
@@ -83,29 +90,52 @@ public final class OfflineClipboardSyncApp {
         System.out.printf("Monitoring %s for offline clipboard changes every %d minutes.%n",
                 offlineLog.toAbsolutePath(), syncInterval.toMinutes());
         app.monitor(recordSource,
-                snapshot -> fileLocker.clearIfUnchanged(offlineLog, snapshot.content()),
+                rejectionSink, snapshotClearer,
                 initialSnapshot, syncInterval, Thread::sleep);
     }
 
-    static ClipboardSnapshot awaitInitialSnapshot(RecordSource recordSource, Duration interval, Sleeper sleeper)
+    static ClipboardSnapshot awaitInitialSnapshot(RecordSource recordSource, Sleeper sleeper)
             throws InterruptedException {
+        int failures = 0;
         while (true) {
             try {
                 return recordSource.read();
             } catch (IOException | RuntimeException exception) {
-                System.err.printf("Could not read initial offline clipboard file; will retry in %d minutes: %s%n",
-                        interval.toMinutes(), exception.getMessage());
+                failures = nextFailureCount(failures, "read initial offline clipboard file", exception);
+                Duration delay = retryDelay(failures);
+                System.err.printf("Could not read initial offline clipboard file; retry %d/%d in %d seconds: %s%n",
+                        failures, MAX_RETRIES, delay.toSeconds(), exception.getMessage());
+                sleeper.sleep(delay);
             }
-            sleeper.sleep(interval);
         }
     }
 
-    static ClipboardSnapshot awaitInitialSyncableSnapshot(RecordSource recordSource, Duration interval, Sleeper sleeper)
+    static ClipboardSnapshot awaitInitialSyncableSnapshot(
+            RecordSource recordSource,
+            RejectionSink rejectionSink,
+            SnapshotClearer snapshotClearer,
+            Duration interval,
+            Sleeper sleeper)
             throws InterruptedException {
+        int failures = 0;
         while (true) {
-            ClipboardSnapshot snapshot = awaitInitialSnapshot(recordSource, interval, sleeper);
+            ClipboardSnapshot snapshot = awaitInitialSnapshot(recordSource, sleeper);
             if (!syncableRecords(snapshot.records(), false).isEmpty()) {
                 return snapshot;
+            }
+            try {
+                rejectAll(snapshot.rejections(), rejectionSink);
+                if (!snapshotClearer.clear(snapshot)) {
+                    continue;
+                }
+                failures = 0;
+            } catch (IOException | RuntimeException exception) {
+                failures = nextFailureCount(failures, "prepare initial offline clipboard snapshot", exception);
+                Duration delay = retryDelay(failures);
+                System.err.printf("Could not prepare initial offline clipboard snapshot; retry %d/%d in %d seconds: %s%n",
+                        failures, MAX_RETRIES, delay.toSeconds(), exception.getMessage());
+                sleeper.sleep(delay);
+                continue;
             }
             System.out.printf("Offline clipboard file has no usable clipboard entries yet; waiting %d minutes to derive CLIENT_ID.%n",
                     interval.toMinutes());
@@ -113,7 +143,7 @@ public final class OfflineClipboardSyncApp {
         }
     }
 
-    void monitor(RecordSource recordSource, SnapshotClearer snapshotClearer,
+    void monitor(RecordSource recordSource, RejectionSink rejectionSink, SnapshotClearer snapshotClearer,
                  ClipboardSnapshot initialSnapshot, Duration interval, Sleeper sleeper)
             throws InterruptedException {
         if (interval.isZero() || interval.isNegative()) {
@@ -122,16 +152,18 @@ public final class OfflineClipboardSyncApp {
 
         ClipboardSnapshot snapshot = initialSnapshot;
         String lastProcessedContent = null;
+        int failures = 0;
         while (true) {
             if (!snapshot.content().equals(lastProcessedContent)) {
                 try {
+                    rejectAll(snapshot.rejections(), rejectionSink);
                     List<ClipboardRecord> records = snapshot.records();
                     if (records.isEmpty()) {
                         System.out.println("No offline clipboard entries to sync. Waiting for changes.");
                     } else {
-                        SyncResult result = sync(records);
-                        System.out.printf("Offline clipboard sync complete. clientId=%s checked=%d alreadyPresent=%d sent=%d%n",
-                                clientId, records.size(), result.alreadyPresent(), result.sent());
+                        SyncResult result = sync(records, rejectionSink);
+                        System.out.printf("Offline clipboard sync complete. clientId=%s checked=%d alreadyPresent=%d sent=%d rejected=%d%n",
+                                clientId, records.size(), result.alreadyPresent(), result.sent(), result.rejected());
                     }
                     if (snapshotClearer.clear(snapshot)) {
                         System.out.println("Cleared synchronized offline clipboard file.");
@@ -139,28 +171,49 @@ public final class OfflineClipboardSyncApp {
                         System.out.println("Offline clipboard file changed during sync; preserving it for the next pass.");
                     }
                     lastProcessedContent = snapshot.content();
+                    failures = 0;
                 } catch (IOException | RuntimeException exception) {
-                    System.err.printf("Offline clipboard sync failed; will retry in %d minutes: %s%n",
-                            interval.toMinutes(), exception.getMessage());
+                    failures = nextFailureCount(failures, "synchronize offline clipboard", exception);
+                    Duration delay = retryDelay(failures);
+                    System.err.printf("Offline clipboard sync failed; retry %d/%d in %d seconds: %s%n",
+                            failures, MAX_RETRIES, delay.toSeconds(), exception.getMessage());
+                    sleeper.sleep(delay);
+                    continue;
                 }
             }
 
             sleeper.sleep(interval);
-            try {
-                snapshot = recordSource.read();
-            } catch (IOException | RuntimeException exception) {
-                System.err.printf("Could not read offline clipboard file; will retry in %d minutes: %s%n",
-                        interval.toMinutes(), exception.getMessage());
-            }
+            snapshot = readWithRetries(recordSource, sleeper, "read offline clipboard file");
         }
     }
 
     SyncResult sync(List<ClipboardRecord> records) throws IOException, InterruptedException {
+        return sync(records, rejection -> {
+            throw new IOException("A rejection sink is required to preserve rejected offline entries.");
+        });
+    }
+
+    SyncResult sync(List<ClipboardRecord> records, RejectionSink rejectionSink)
+            throws IOException, InterruptedException {
         records = syncableRecords(records, true);
         if (records.isEmpty()) {
-            return new SyncResult(0, 0);
+            return new SyncResult(0, 0, 0);
         }
-        ensureRecordsBelongToClient(records, clientId);
+
+        List<ClipboardRecord> ownedRecords = records.stream()
+                .filter(record -> record.clientId().equals(clientId))
+                .toList();
+        for (ClipboardRecord record : records) {
+            if (!record.clientId().equals(clientId)) {
+                rejectionSink.reject(RejectedRecord.forRecord(
+                        "client-ownership", "Entry belongs to a different client", record));
+            }
+        }
+        int rejected = records.size() - ownedRecords.size();
+        records = ownedRecords;
+        if (records.isEmpty()) {
+            return new SyncResult(0, 0, rejected);
+        }
 
         Instant from = records.stream().map(ClipboardRecord::timestamp).min(Instant::compareTo).orElseThrow();
         Instant to = records.stream().map(ClipboardRecord::timestamp).max(Instant::compareTo).orElseThrow();
@@ -173,11 +226,18 @@ public final class OfflineClipboardSyncApp {
                 alreadyPresent++;
                 continue;
             }
-            post(record);
+            HttpResponse<String> response = post(record);
+            if (isPermanentRecordRejection(response.statusCode())) {
+                rejectionSink.reject(RejectedRecord.forRecord(
+                        "server-response", "HTTP " + response.statusCode(), record));
+                rejected++;
+                continue;
+            }
+            requireSuccess(response, "send offline clipboard entry at " + record.timestamp());
             remoteRecords.add(key);
             sent++;
         }
-        return new SyncResult(alreadyPresent, sent);
+        return new SyncResult(alreadyPresent, sent, rejected);
     }
 
     private RemoteRecordIndex fetchRemoteRecords(Instant from, Instant to) throws IOException, InterruptedException {
@@ -213,7 +273,7 @@ public final class OfflineClipboardSyncApp {
         }
     }
 
-    private void post(ClipboardRecord record) throws IOException, InterruptedException {
+    private HttpResponse<String> post(ClipboardRecord record) throws IOException, InterruptedException {
         String body = JSON.writeValueAsString(JSON.createObjectNode()
                 .put("clientId", record.clientId())
                 .put("content", record.content())
@@ -223,7 +283,7 @@ public final class OfflineClipboardSyncApp {
             authSession.refresh();
             response = sendPost(body);
         }
-        requireSuccess(response, "send offline clipboard entry at " + record.timestamp());
+        return response;
     }
 
     private HttpResponse<String> sendGet(URI uri) throws IOException, InterruptedException {
@@ -251,16 +311,33 @@ public final class OfflineClipboardSyncApp {
 
     static ClipboardSnapshot readClipboardSnapshot(Path path, OfflineFileLockerClient fileLocker) throws IOException {
         String content = fileLocker.read(path);
-        return new ClipboardSnapshot(content, parseClipboardRecords(content, path));
+        return parseClipboardSnapshot(content, path);
     }
 
     static List<ClipboardRecord> parseClipboardRecords(String content, Path path) throws IOException {
-        JsonNode root = JSON.readTree(content);
+        ClipboardSnapshot snapshot = parseClipboardSnapshot(content, path);
+        if (!snapshot.rejections().isEmpty()) {
+            throw new IOException(snapshot.rejections().getFirst().reason());
+        }
+        return snapshot.records();
+    }
+
+    static ClipboardSnapshot parseClipboardSnapshot(String content, Path path) {
+        JsonNode root;
+        try {
+            root = JSON.readTree(content);
+        } catch (IOException exception) {
+            return new ClipboardSnapshot(content, List.of(), List.of(new RejectedRecord(
+                    "invalid-json", "Offline clipboard file is not valid JSON", content)));
+        }
         if (!(root instanceof ArrayNode array)) {
-            throw new IOException("Offline clipboard file must contain a JSON array: " + path.toAbsolutePath());
+            return new ClipboardSnapshot(content, List.of(), List.of(new RejectedRecord(
+                    "invalid-json", "Offline clipboard file must contain a JSON array: " + path.toAbsolutePath(),
+                    root == null ? "null" : root.toString())));
         }
 
-        java.util.ArrayList<ClipboardRecord> records = new java.util.ArrayList<>();
+        List<ClipboardRecord> records = new ArrayList<>();
+        List<RejectedRecord> rejections = new ArrayList<>();
         for (int index = 0; index < array.size(); index++) {
             JsonNode node = array.get(index);
             String type = node.path("type").asText("");
@@ -268,14 +345,19 @@ public final class OfflineClipboardSyncApp {
                 continue;
             }
             String context = "offline entry " + index;
-            String entryContent = requiredText(node, "content");
-            records.add(new ClipboardRecord(
-                    requiredText(node, "clientId"),
-                    entryContent,
-                    parseTimestamp(requiredText(node, "timestamp"), context)
-            ));
+            try {
+                String entryContent = requiredText(node, "content");
+                records.add(new ClipboardRecord(
+                        requiredText(node, "clientId"),
+                        entryContent,
+                        parseTimestamp(requiredText(node, "timestamp"), context)
+                ));
+            } catch (IOException exception) {
+                rejections.add(new RejectedRecord("invalid-entry", context + ": " + exception.getMessage(),
+                        node.toString()));
+            }
         }
-        return List.copyOf(records);
+        return new ClipboardSnapshot(content, records, rejections);
     }
 
     private static String singleClientId(List<ClipboardRecord> records) {
@@ -301,12 +383,6 @@ public final class OfflineClipboardSyncApp {
                 .toList();
     }
 
-    private static void ensureRecordsBelongToClient(List<ClipboardRecord> records, String expectedClientId) {
-        if (records.stream().anyMatch(record -> !record.clientId().equals(expectedClientId))) {
-            throw new IllegalArgumentException("Offline clipboard file contains entries for a client other than " + expectedClientId + ".");
-        }
-    }
-
     private static URI clipboardEndpoint(String remoteUrl) {
         String trimmed = remoteUrl.trim();
         return URI.create(trimmed.endsWith("/clipboard") ? trimmed : trimmed.replaceAll("/+$", "") + "/clipboard");
@@ -318,6 +394,63 @@ public final class OfflineClipboardSyncApp {
                     + " must be at least 1.");
         }
         return Duration.ofMinutes(minutes);
+    }
+
+    static Duration retryDelay(int retryNumber) {
+        if (retryNumber < 1) {
+            throw new IllegalArgumentException("Retry number must be positive.");
+        }
+        long multiplier = 1L << Math.min(retryNumber - 1, 30);
+        Duration delay = INITIAL_RETRY_DELAY.multipliedBy(multiplier);
+        return delay.compareTo(MAX_RETRY_DELAY) > 0 ? MAX_RETRY_DELAY : delay;
+    }
+
+    private static ClipboardSnapshot readWithRetries(RecordSource recordSource, Sleeper sleeper, String operation)
+            throws InterruptedException {
+        int failures = 0;
+        while (true) {
+            try {
+                return recordSource.read();
+            } catch (IOException | RuntimeException exception) {
+                failures = nextFailureCount(failures, operation, exception);
+                Duration delay = retryDelay(failures);
+                System.err.printf("Could not %s; retry %d/%d in %d seconds: %s%n",
+                        operation, failures, MAX_RETRIES, delay.toSeconds(), exception.getMessage());
+                sleeper.sleep(delay);
+            }
+        }
+    }
+
+    private static int nextFailureCount(int failures, String operation, Exception cause) {
+        int next = failures + 1;
+        if (next > MAX_RETRIES) {
+            throw retryExhausted(operation, cause);
+        }
+        return next;
+    }
+
+    private static IllegalStateException retryExhausted(String operation, Exception cause) {
+        return new IllegalStateException("Stopped after " + MAX_RETRIES + " retries while attempting to "
+                + operation + ": " + cause.getMessage(), cause);
+    }
+
+    private static boolean isPermanentRecordRejection(int statusCode) {
+        return statusCode == 400 || statusCode == 413 || statusCode == 415 || statusCode == 422;
+    }
+
+    private static Path deadLetterPath(Path offlineLog) {
+        String fileName = offlineLog.getFileName() == null ? "offline" : offlineLog.getFileName().toString();
+        int extension = fileName.lastIndexOf('.');
+        String deadLetterName = extension > 0
+                ? fileName.substring(0, extension) + "-dead-letter" + fileName.substring(extension)
+                : fileName + "-dead-letter.json";
+        return offlineLog.toAbsolutePath().normalize().resolveSibling(deadLetterName);
+    }
+
+    private static void rejectAll(List<RejectedRecord> rejections, RejectionSink rejectionSink) throws IOException {
+        for (RejectedRecord rejection : rejections) {
+            rejectionSink.reject(rejection);
+        }
     }
 
     private static String requiredText(JsonNode node, String field) throws IOException {
@@ -360,12 +493,41 @@ public final class OfflineClipboardSyncApp {
         }
     }
 
-    record SyncResult(int alreadyPresent, int sent) {
+    record SyncResult(int alreadyPresent, int sent, int rejected) {
+        SyncResult(int alreadyPresent, int sent) {
+            this(alreadyPresent, sent, 0);
+        }
     }
 
-    record ClipboardSnapshot(String content, List<ClipboardRecord> records) {
+    record ClipboardSnapshot(String content, List<ClipboardRecord> records, List<RejectedRecord> rejections) {
         ClipboardSnapshot {
             records = List.copyOf(records);
+            rejections = List.copyOf(rejections);
+        }
+
+        ClipboardSnapshot(String content, List<ClipboardRecord> records) {
+            this(content, records, List.of());
+        }
+    }
+
+    record RejectedRecord(String stage, String reason, String original) {
+        static RejectedRecord forRecord(String stage, String reason, ClipboardRecord record) {
+            try {
+                return new RejectedRecord(stage, reason, JSON.writeValueAsString(JSON.createObjectNode()
+                        .put("clientId", record.clientId())
+                        .put("content", record.content())
+                        .put("timestamp", record.timestamp().toString())));
+            } catch (IOException exception) {
+                throw new IllegalStateException("Could not serialize rejected clipboard record.", exception);
+            }
+        }
+
+        String toJson() throws IOException {
+            return JSON.writeValueAsString(JSON.createObjectNode()
+                    .put("type", "dead-letter")
+                    .put("stage", stage)
+                    .put("reason", reason)
+                    .put("original", original));
         }
     }
 
@@ -377,6 +539,11 @@ public final class OfflineClipboardSyncApp {
     @FunctionalInterface
     interface SnapshotClearer {
         boolean clear(ClipboardSnapshot snapshot) throws IOException;
+    }
+
+    @FunctionalInterface
+    interface RejectionSink {
+        void reject(RejectedRecord rejection) throws IOException;
     }
 
     @FunctionalInterface

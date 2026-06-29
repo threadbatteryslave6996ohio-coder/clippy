@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OfflineClipboardSyncAppTest {
@@ -100,6 +101,7 @@ class OfflineClipboardSyncAppTest {
 
             assertEquals(1, result.alreadyPresent());
             assertEquals(1, result.sent());
+            assertEquals(0, result.rejected());
             assertEquals(2, requests.size());
             assertTrue(requests.getFirst().startsWith("GET "));
             assertTrue(requests.getFirst().contains("from=2026-06-23T12%3A00%3A00.123455789Z"));
@@ -130,7 +132,7 @@ class OfflineClipboardSyncAppTest {
             );
             OfflineClipboardSyncApp.ClipboardSnapshot changedSnapshot =
                     new OfflineClipboardSyncApp.ClipboardSnapshot("[changed]", changedRecords);
-            app.monitor(() -> changedSnapshot,
+            app.monitor(() -> changedSnapshot, ignored -> { },
                     snapshot -> {
                         clearedSnapshots.add(snapshot.content());
                         return true;
@@ -173,13 +175,12 @@ class OfflineClipboardSyncAppTest {
                     }
                     return expectedSnapshot;
                 },
-                OfflineClipboardSyncApp.DEFAULT_SYNC_INTERVAL,
                 sleepDurations::add
         );
 
         assertEquals(expectedSnapshot, snapshot);
         assertEquals(2, attempts[0]);
-        assertEquals(List.of(Duration.ofMinutes(30)), sleepDurations);
+        assertEquals(List.of(Duration.ofSeconds(5)), sleepDurations);
     }
 
     @Test
@@ -205,7 +206,7 @@ class OfflineClipboardSyncAppTest {
                         return new OfflineClipboardSyncApp.ClipboardSnapshot("[oversized]", oversizedOnly);
                     }
                     return new OfflineClipboardSyncApp.ClipboardSnapshot("[usable]", usableRecords);
-                },
+                }, ignored -> { }, ignored -> true,
                 OfflineClipboardSyncApp.DEFAULT_SYNC_INTERVAL,
                 sleepDurations::add
         );
@@ -232,7 +233,7 @@ class OfflineClipboardSyncAppTest {
                             "client-a", "keep me", Instant.parse("2026-06-23T15:00:00Z")))
             );
 
-            app.monitor(() -> snapshot, ignored -> {
+            app.monitor(() -> snapshot, ignored -> { }, ignored -> {
                 clearAttempts[0]++;
                 return true;
             }, snapshot, Duration.ofMinutes(30), ignored -> {
@@ -245,6 +246,184 @@ class OfflineClipboardSyncAppTest {
         }
 
         assertEquals(0, clearAttempts[0]);
+    }
+
+    @Test
+    void deadLettersMalformedEntryAndKeepsValidEntrySyncable() {
+        String content = """
+                [
+                  {"clientId":"client-a","content":"missing timestamp"},
+                  {"clientId":"client-a","content":"valid","timestamp":"2026-06-23T12:00:00Z"}
+                ]
+                """;
+
+        OfflineClipboardSyncApp.ClipboardSnapshot snapshot =
+                OfflineClipboardSyncApp.parseClipboardSnapshot(content, tempDir.resolve("offline.json"));
+
+        assertEquals(1, snapshot.records().size());
+        assertEquals("valid", snapshot.records().getFirst().content());
+        assertEquals(1, snapshot.rejections().size());
+        assertEquals("invalid-entry", snapshot.rejections().getFirst().stage());
+        assertTrue(snapshot.rejections().getFirst().reason().contains("timestamp"));
+    }
+
+    @Test
+    void deadLettersPermanentPostRejectionAndContinuesWithLaterRecord() throws Exception {
+        List<String> requests = new ArrayList<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/clipboard", exchange -> {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                respond(exchange, 200, "[]");
+                return;
+            }
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            requests.add(body);
+            respond(exchange, body.contains("reject me") ? 400 : 201, "");
+        });
+        server.start();
+        List<OfflineClipboardSyncApp.RejectedRecord> rejections = new ArrayList<>();
+
+        try {
+            OfflineClipboardSyncApp app = new OfflineClipboardSyncApp(
+                    URI.create("http://localhost:" + server.getAddress().getPort() + "/clipboard"),
+                    "client-a", new ClientAuthSession(null, "client-a", null, "token-a"));
+            List<OfflineClipboardSyncApp.ClipboardRecord> records = List.of(
+                    new OfflineClipboardSyncApp.ClipboardRecord(
+                            "client-a", "reject me", Instant.parse("2026-06-23T12:00:00Z")),
+                    new OfflineClipboardSyncApp.ClipboardRecord(
+                            "client-a", "send me", Instant.parse("2026-06-23T12:01:00Z")));
+
+            OfflineClipboardSyncApp.SyncResult result = app.sync(records, rejections::add);
+
+            assertEquals(new OfflineClipboardSyncApp.SyncResult(0, 1, 1), result);
+            assertEquals(2, requests.size());
+            assertEquals(1, rejections.size());
+            assertEquals("HTTP 400", rejections.getFirst().reason());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void preservesSnapshotWhenDeadLetterWriteFails() throws Exception {
+        OfflineClipboardSyncApp app = new OfflineClipboardSyncApp(
+                URI.create("http://localhost:1/clipboard"),
+                "client-a", new ClientAuthSession(null, "client-a", null, "token-a"));
+        OfflineClipboardSyncApp.ClipboardSnapshot snapshot = new OfflineClipboardSyncApp.ClipboardSnapshot(
+                "[malformed]", List.of(), List.of(new OfflineClipboardSyncApp.RejectedRecord(
+                        "invalid-entry", "bad entry", "{}")));
+        int[] clearAttempts = {0};
+
+        InterruptedException stopped = assertThrows(InterruptedException.class, () -> app.monitor(
+                () -> snapshot,
+                ignored -> { throw new IOException("dead-letter unavailable"); },
+                ignored -> { clearAttempts[0]++; return true; },
+                snapshot,
+                OfflineClipboardSyncApp.DEFAULT_SYNC_INTERVAL,
+                ignored -> { throw new InterruptedException("stop test loop"); }));
+
+        assertEquals("stop test loop", stopped.getMessage());
+        assertEquals(0, clearAttempts[0]);
+    }
+
+    @Test
+    void stopsAfterFifthRetry() {
+        List<Duration> delays = new ArrayList<>();
+        int[] attempts = {0};
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> OfflineClipboardSyncApp.awaitInitialSnapshot(
+                        () -> { attempts[0]++; throw new IOException("still unavailable"); },
+                        delays::add));
+
+        assertEquals(6, attempts[0]);
+        assertEquals(List.of(
+                Duration.ofSeconds(5), Duration.ofSeconds(10), Duration.ofSeconds(20),
+                Duration.ofSeconds(40), Duration.ofSeconds(80)), delays);
+        assertTrue(failure.getMessage().contains("Stopped after 5 retries"));
+    }
+
+    @Test
+    void stopsSynchronizationAfterFifthRetryWithoutClearingSource() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        int[] requests = {0};
+        server.createContext("/clipboard", exchange -> {
+            requests[0]++;
+            respond(exchange, 503, "temporarily unavailable");
+        });
+        server.start();
+        List<Duration> delays = new ArrayList<>();
+        int[] clearAttempts = {0};
+
+        try {
+            OfflineClipboardSyncApp app = new OfflineClipboardSyncApp(
+                    URI.create("http://localhost:" + server.getAddress().getPort() + "/clipboard"),
+                    "client-a", new ClientAuthSession(null, "client-a", null, "token-a"));
+            OfflineClipboardSyncApp.ClipboardSnapshot snapshot = new OfflineClipboardSyncApp.ClipboardSnapshot(
+                    "[retry]", List.of(new OfflineClipboardSyncApp.ClipboardRecord(
+                            "client-a", "keep me", Instant.parse("2026-06-23T12:00:00Z"))));
+
+            IllegalStateException failure = assertThrows(IllegalStateException.class, () -> app.monitor(
+                    () -> snapshot, ignored -> { }, ignored -> { clearAttempts[0]++; return true; },
+                    snapshot, OfflineClipboardSyncApp.DEFAULT_SYNC_INTERVAL, delays::add));
+
+            assertTrue(failure.getMessage().contains("Stopped after 5 retries"));
+            assertEquals(6, requests[0]);
+            assertEquals(0, clearAttempts[0]);
+            assertEquals(List.of(
+                    Duration.ofSeconds(5), Duration.ofSeconds(10), Duration.ofSeconds(20),
+                    Duration.ofSeconds(40), Duration.ofSeconds(80)), delays);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void producesStableDeadLetterPayloadForIdempotentAppendRetries() throws Exception {
+        OfflineClipboardSyncApp.RejectedRecord rejection = new OfflineClipboardSyncApp.RejectedRecord(
+                "invalid-entry", "missing timestamp", "{\"content\":\"keep me\"}");
+
+        assertEquals(rejection.toJson(), rejection.toJson());
+        assertTrue(rejection.toJson().contains("\"type\":\"dead-letter\""));
+    }
+
+    @Test
+    void resetsToNormalIntervalAfterRetrySucceeds() throws Exception {
+        int[] requests = {0};
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/clipboard", exchange -> {
+            if (requests[0]++ == 0) {
+                respond(exchange, 503, "temporarily unavailable");
+            } else if ("GET".equals(exchange.getRequestMethod())) {
+                respond(exchange, 200, "[]");
+            } else {
+                respond(exchange, 201, "{}");
+            }
+        });
+        server.start();
+        List<Duration> delays = new ArrayList<>();
+
+        try {
+            OfflineClipboardSyncApp app = new OfflineClipboardSyncApp(
+                    URI.create("http://localhost:" + server.getAddress().getPort() + "/clipboard"),
+                    "client-a", new ClientAuthSession(null, "client-a", null, "token-a"));
+            OfflineClipboardSyncApp.ClipboardSnapshot snapshot = new OfflineClipboardSyncApp.ClipboardSnapshot(
+                    "[retry]", List.of(new OfflineClipboardSyncApp.ClipboardRecord(
+                            "client-a", "send me", Instant.parse("2026-06-23T12:00:00Z"))));
+
+            assertThrows(InterruptedException.class, () -> app.monitor(
+                    () -> snapshot, ignored -> { }, ignored -> true, snapshot,
+                    OfflineClipboardSyncApp.DEFAULT_SYNC_INTERVAL, delay -> {
+                        delays.add(delay);
+                        if (delays.size() == 2) {
+                            throw new InterruptedException("stop test loop");
+                        }
+                    }));
+        } finally {
+            server.stop(0);
+        }
+
+        assertEquals(List.of(Duration.ofSeconds(5), Duration.ofMinutes(30)), delays);
     }
 
     private static void handleClipboard(HttpExchange exchange, List<String> requests) throws IOException {

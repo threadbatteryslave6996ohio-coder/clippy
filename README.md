@@ -59,6 +59,20 @@ java -jar server/target/clippy-server-0.1.0-SNAPSHOT-exec.jar
 
 The auth server listens on `http://localhost:8081` and the app server listens on `http://localhost:8080` by default. Both servers read their settings from the repository root `.env` through the shared env manager.
 
+### Run the whole stack with Docker
+
+A root [`Dockerfile`](Dockerfile) builds all three deployment jars and [`docker-compose.yml`](docker-compose.yml) wires them up with Postgres. The deployment shape is selected with a compose **profile** — this is the flag:
+
+```bash
+# Separate deployment: auth server (8081) + clipboard server (8080) in their own JVMs
+docker compose --profile separate up --build
+
+# Combined deployment: auth + clipboard routes in a single JVM (8080)
+docker compose --profile combined up --build
+```
+
+`COMPOSE_PROFILES=separate docker compose up --build` works too. Both profiles start the two Postgres databases (`5432` for clipboard, `5433` for auth); running with no profile starts nothing, on purpose. The combined target reads [`combined-server/docker-combined.env`](combined-server/docker-combined.env), which is mounted into the container and pointed at via `CLIPPY_ENV_FILE`. The separate targets take their config from the `environment:` blocks in the compose file.
+
 The auth server uses `AUTH_DATASOURCE_*` values and the app server uses `SPRING_DATASOURCE_*` values. Set those to your Azure PostgreSQL connection details in `.env` or in the shell before running Maven. Use separate database names if you want isolation between auth and clipboard data.
 
 ```text
@@ -142,6 +156,23 @@ Keep it running and start the Linux client from a logged-in graphical session in
 ```bash
 cd ~/Desktop/clippy
 ./scripts/start-linux-client.sh
+```
+
+To launch the local auth server, app server, file-locker, Linux client, and
+offline sync client together inside tmux:
+
+```bash
+cd ~/Desktop/clippy
+./scripts/start-local-stack-tmux.sh
+```
+
+The script creates a `clippy` tmux session with a `stack` window for the auth
+server, app server, file-locker, and Linux client, plus a `sync` window for the
+offline sync client. Pass a different session name as the first argument to
+override `clippy`. Pass `--detached` to create the session without attaching:
+
+```bash
+./scripts/start-local-stack-tmux.sh --detached
 ```
 
 `REMOTE_SERVER_URL` is required. It can be the server base URL, such as `http://localhost:8080`, or the full endpoint, such as `http://localhost:8080/clipboard`.

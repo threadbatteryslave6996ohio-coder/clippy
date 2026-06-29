@@ -24,3 +24,9 @@ Future cleanup:
 - in combined deployment, bind that interface directly to the auth service implementation used by the auth module
 
 Until that refactor is done, use HTTP in both deployment modes to keep the combined-server feature smaller.
+
+## CLIENTID 
+ 4. Medium: changing CLIENT_ID, or sharing the same offline file between clients, can
+     stop synchronization. Mixed-client data either terminates startup or causes
+     endless retries later rather than separating records by owner.
+

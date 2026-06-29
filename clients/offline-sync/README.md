@@ -11,6 +11,14 @@ are not clipboard data. After every successful pass, the source JSON file is
 atomically cleared to `[]`. If another process appends during synchronization,
 the clear is skipped and the updated file is handled on the next pass.
 
+Malformed entries and records rejected by the server with a record-specific
+`400`, `413`, `415`, or `422` response are appended to a sibling dead-letter
+file before synchronization continues. For the default input, that file is
+`clippy-offline-clipboard-dead-letter.json`. Each dead-letter entry records the
+processing stage, rejection reason, and original JSON. Dead-letter appends are
+idempotent. The source snapshot is not cleared unless every rejected entry was
+safely recorded.
+
 Configure the same values used by the clipboard client in the repository `.env`:
 
 ```dotenv
@@ -28,6 +36,11 @@ startup, it waits and retries every 30 minutes; a usable clipboard entry must
 appear before the client id can be derived.
 `OFFLINE_SYNC_INTERVAL_MINUTES` is optional, defaults to `30`, and must be at
 least `1`.
+
+Retryable file-locker, network, authentication, throttling, and server failures
+use delays of 5, 10, 20, 40, and 80 seconds. If the fifth retry fails, the sync
+process exits with an error and leaves the offline source file unchanged. The
+configured sync interval is used again after a successful pass.
 
 Run it from the repository root:
 
