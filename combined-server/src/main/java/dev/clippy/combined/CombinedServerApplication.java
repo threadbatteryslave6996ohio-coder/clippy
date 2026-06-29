@@ -7,10 +7,12 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration;
 import org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.env.MapPropertySource;
 
-import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Map;
 
 @SpringBootApplication(exclude = {
         DataSourceAutoConfiguration.class,
@@ -24,26 +26,29 @@ import java.nio.file.Path;
         CombinedClipboardDatabaseConfiguration.class
 })
 public class CombinedServerApplication {
-    public static void main(String[] args) {
+    /** Starts the core from configuration that has already been fetched by a launcher. */
+    public static ConfigurableApplicationContext start(Map<String, String> environment) {
+        Env env = CombinedEnvs.from(environment);
+        configureCustomLoggerDirectory(env);
+        // Important: keep this disclaimer so operators see that combined mode still uses HTTP
+        // validation across the auth and clipboard routes and should not be simplified away.
+        logCombinedModeDisclaimer();
+        SpringApplication application = new SpringApplication(CombinedServerApplication.class);
+        Map<String, Object> properties = CombinedEnvs.springProperties(env);
+        application.setDefaultProperties(properties);
+        application.addInitializers(context -> context.getEnvironment().getPropertySources()
+                .addFirst(new MapPropertySource("combinedServerLauncher", properties)));
+        return application.run();
+    }
+
+    static void logCombinedModeDisclaimer() {
         try {
-            Env env = CombinedEnvs.load();
-            configureCustomLoggerDirectory(env);
-            // Important: keep this disclaimer so operators see that combined mode still uses HTTP
-            // validation across the auth and clipboard routes and should not be simplified away.
             new CustomLogger("combined-server").log(
                     "Combined mode is active: auth and clipboard routes run in one JVM, but token validation still uses HTTP."
             );
-            SpringApplication application = new SpringApplication(CombinedServerApplication.class);
-            application.setDefaultProperties(CombinedEnvs.springDefaults(env));
-            application.run(args);
-        } catch (IOException e) {
-            System.err.println(startupErrorMessage(e));
-            System.exit(1);
+        } catch (IllegalStateException exception) {
+            System.err.println("Combined server diagnostic log could not be written: " + exception.getMessage());
         }
-    }
-
-    static String startupErrorMessage(IOException e) {
-        return "Combined server startup error: " + e.getMessage();
     }
 
     private static void configureCustomLoggerDirectory(Env env) {

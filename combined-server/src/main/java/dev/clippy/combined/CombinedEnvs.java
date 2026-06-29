@@ -1,15 +1,10 @@
 package dev.clippy.combined;
 
 import dev.clippy.utils.envmanager.Env;
-import dev.clippy.utils.envmanager.EnvFiles;
 import dev.clippy.utils.envmanager.EnvOption;
 import dev.clippy.utils.envmanager.EnvSchema;
 import dev.clippy.utils.envmanager.EnvType;
 
-import java.io.IOException;
-import java.net.URISyntaxException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -25,46 +20,38 @@ public final class CombinedEnvs {
     public static final EnvOption<String> CLIPPY_AUTH_ROUTE_PREFIX;
     public static final EnvOption<String> CLIPPY_SERVER_ROUTE_PREFIX;
     public static final EnvOption<String> LOGGING_FILE_NAME;
+    public static final EnvOption<String> AUTH_JPA_HIBERNATE_DDL_AUTO;
+    public static final EnvOption<String> CLIPBOARD_JPA_HIBERNATE_DDL_AUTO;
+    public static final EnvOption<String> JPA_JDBC_TIME_ZONE;
     public static final EnvSchema ENV;
 
     static {
         var builder = EnvSchema.builder();
-        COMBINED_SERVER_PORT = builder.optional("COMBINED_SERVER_PORT", EnvType.string(), "8080");
-        AUTH_DATASOURCE_URL = builder.optional("AUTH_DATASOURCE_URL", EnvType.string(),
-                "jdbc:postgresql://localhost:5433/auth");
-        AUTH_DATASOURCE_USERNAME = builder.optional("AUTH_DATASOURCE_USERNAME", EnvType.string(), "auth");
-        AUTH_DATASOURCE_PASSWORD = builder.optional("AUTH_DATASOURCE_PASSWORD", EnvType.string(), "auth");
-        SPRING_DATASOURCE_URL = builder.optional("SPRING_DATASOURCE_URL", EnvType.string(),
-                "jdbc:postgresql://localhost:5432/clippy");
-        SPRING_DATASOURCE_USERNAME = builder.optional("SPRING_DATASOURCE_USERNAME", EnvType.string(), "clippy");
-        SPRING_DATASOURCE_PASSWORD = builder.optional("SPRING_DATASOURCE_PASSWORD", EnvType.string(), "clippy");
-        CLIPPY_AUTH_BASE_URL = builder.optional("CLIPPY_AUTH_BASE_URL", EnvType.string(), "http://localhost:8080/auth");
-        CLIPPY_AUTH_ROUTE_PREFIX = builder.optional("CLIPPY_AUTH_ROUTE_PREFIX", EnvType.string(), "/auth");
-        CLIPPY_SERVER_ROUTE_PREFIX = builder.optional("CLIPPY_SERVER_ROUTE_PREFIX", EnvType.string(), "/api");
-        LOGGING_FILE_NAME = builder.optional("LOGGING_FILE_NAME", EnvType.string(), "logs/clippy-combined-server.log");
+        COMBINED_SERVER_PORT = builder.required("COMBINED_SERVER_PORT", EnvType.string());
+        AUTH_DATASOURCE_URL = builder.required("AUTH_DATASOURCE_URL", EnvType.string());
+        AUTH_DATASOURCE_USERNAME = builder.required("AUTH_DATASOURCE_USERNAME", EnvType.string());
+        AUTH_DATASOURCE_PASSWORD = builder.required("AUTH_DATASOURCE_PASSWORD", EnvType.string());
+        SPRING_DATASOURCE_URL = builder.required("SPRING_DATASOURCE_URL", EnvType.string());
+        SPRING_DATASOURCE_USERNAME = builder.required("SPRING_DATASOURCE_USERNAME", EnvType.string());
+        SPRING_DATASOURCE_PASSWORD = builder.required("SPRING_DATASOURCE_PASSWORD", EnvType.string());
+        CLIPPY_AUTH_BASE_URL = builder.required("CLIPPY_AUTH_BASE_URL", EnvType.string());
+        CLIPPY_AUTH_ROUTE_PREFIX = builder.required("CLIPPY_AUTH_ROUTE_PREFIX", EnvType.string());
+        CLIPPY_SERVER_ROUTE_PREFIX = builder.required("CLIPPY_SERVER_ROUTE_PREFIX", EnvType.string());
+        LOGGING_FILE_NAME = builder.required("LOGGING_FILE_NAME", EnvType.string());
+        AUTH_JPA_HIBERNATE_DDL_AUTO = builder.required("AUTH_JPA_HIBERNATE_DDL_AUTO", EnvType.string());
+        CLIPBOARD_JPA_HIBERNATE_DDL_AUTO = builder.required("CLIPBOARD_JPA_HIBERNATE_DDL_AUTO", EnvType.string());
+        JPA_JDBC_TIME_ZONE = builder.required("JPA_JDBC_TIME_ZONE", EnvType.string());
         ENV = builder.build();
     }
 
     private CombinedEnvs() {
     }
 
-    public static Env load() throws IOException {
-        String explicitFile = System.getenv("CLIPPY_ENV_FILE");
-        Path envFile = explicitFile != null && !explicitFile.isBlank()
-                ? Path.of(explicitFile.trim())
-                : defaultEnvFile();
-        return loadFromFile(envFile);
-    }
-
-    static Env loadFromFile(Path envFile) throws IOException {
-        return from(EnvFiles.loadRequiredFile(envFile));
-    }
-
     public static Env from(Map<String, String> source) {
         return ENV.from(source);
     }
 
-    static Map<String, Object> springDefaults(Env env) {
+    static Map<String, Object> springProperties(Env env) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("server.port", env.get(COMBINED_SERVER_PORT));
         values.put("clippy.auth.datasource.url", env.get(AUTH_DATASOURCE_URL));
@@ -77,41 +64,10 @@ public final class CombinedEnvs {
         values.put("clippy.auth.route-prefix", env.get(CLIPPY_AUTH_ROUTE_PREFIX));
         values.put("clippy.server.route-prefix", env.get(CLIPPY_SERVER_ROUTE_PREFIX));
         values.put("logging.file.name", env.get(LOGGING_FILE_NAME));
+        values.put("clippy.auth.jpa.hibernate.ddl-auto", env.get(AUTH_JPA_HIBERNATE_DDL_AUTO));
+        values.put("clippy.clipboard.jpa.hibernate.ddl-auto", env.get(CLIPBOARD_JPA_HIBERNATE_DDL_AUTO));
+        values.put("clippy.jpa.jdbc-time-zone", env.get(JPA_JDBC_TIME_ZONE));
         return values;
     }
 
-    static Path defaultEnvFile() throws IOException {
-        try {
-            Path codeSourceLocation = Path.of(
-                    CombinedEnvs.class.getProtectionDomain().getCodeSource().getLocation().toURI()
-            ).toAbsolutePath().normalize();
-            Path workingDirectory = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
-            return defaultEnvFile(codeSourceLocation, workingDirectory);
-        } catch (URISyntaxException e) {
-            throw new IOException(missingEnvFileMessage(), e);
-        }
-    }
-
-    static Path defaultEnvFile(Path codeSourceLocation) throws IOException {
-        Path workingDirectory = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
-        return defaultEnvFile(codeSourceLocation, workingDirectory);
-    }
-
-    static Path defaultEnvFile(Path codeSourceLocation, Path workingDirectory) throws IOException {
-        Path workingDirectoryEnvFile = workingDirectory.resolve(".env");
-        if (Files.isRegularFile(workingDirectoryEnvFile)) {
-            return workingDirectoryEnvFile;
-        }
-        Path moduleDirectory = codeSourceLocation.getParent() == null
-                ? null
-                : codeSourceLocation.getParent().getParent();
-        if (moduleDirectory == null) {
-            throw new IOException(missingEnvFileMessage());
-        }
-        return moduleDirectory.resolve(".env");
-    }
-
-    private static String missingEnvFileMessage() {
-        return "Missing combined server env file. Create combined-server/.env or set CLIPPY_ENV_FILE to its absolute path.";
-    }
 }

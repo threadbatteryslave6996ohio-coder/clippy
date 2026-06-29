@@ -65,8 +65,8 @@ class CombinedClipboardDatabaseConfiguration {
 
     private static Map<String, Object> jpaProperties(Environment environment, String ddlAutoProperty) {
         Map<String, Object> properties = new HashMap<>();
-        properties.put(AvailableSettings.HBM2DDL_AUTO, environment.getProperty(ddlAutoProperty, "update"));
-        properties.put("hibernate.jdbc.time_zone", environment.getProperty("clippy.jpa.jdbc.time-zone", "UTC"));
+        properties.put(AvailableSettings.HBM2DDL_AUTO, environment.getRequiredProperty(ddlAutoProperty));
+        properties.put("hibernate.jdbc.time_zone", environment.getRequiredProperty("clippy.jpa.jdbc-time-zone"));
         return properties;
     }
 }

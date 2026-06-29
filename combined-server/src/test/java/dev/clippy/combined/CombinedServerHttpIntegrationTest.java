@@ -33,7 +33,8 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "clippy.auth.route-prefix=/auth",
                 "clippy.server.route-prefix=/api",
                 "clippy.auth.jpa.hibernate.ddl-auto=create-drop",
-                "clippy.clipboard.jpa.hibernate.ddl-auto=create-drop"
+                "clippy.clipboard.jpa.hibernate.ddl-auto=create-drop",
+                "clippy.jpa.jdbc-time-zone=UTC"
         }
 )
 class CombinedServerHttpIntegrationTest {

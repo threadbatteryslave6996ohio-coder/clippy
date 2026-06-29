@@ -85,6 +85,9 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>4.1.0</version>
+                <configuration>
+                    <mainClass>dev.clippy.combined.CombinedServerLauncher</mainClass>
+                </configuration>
                 <executions>
                     <execution>
                         <goals>

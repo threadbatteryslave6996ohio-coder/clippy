@@ -53,13 +53,13 @@ mvn -f ../pom.xml -pl server -am package
 java -jar target/clippy-server-0.1.0-SNAPSHOT-exec.jar
 ```
 
-The app server listens on `http://localhost:8080` by default. The auth server listens on `http://localhost:8081` by default.
+The example configuration runs the app server on `http://localhost:8080` and the auth server on `http://localhost:8081`.
 
 ## Configuration
 
-The server loads configuration from a `.env` file in the current directory or any parent directory. The launcher converts the file values into Spring application defaults instead of exposing the env loader to the service classes.
+The launcher loads configuration from a `.env` file in the current directory or any parent directory, applies nonblank shell values as overrides, and passes the resolved map into the server core. The core never fetches configuration itself.
 
-The default local configuration matches the local development settings:
+All values are required. A local configuration is:
 
 ```text
 SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/clippy
@@ -67,11 +67,14 @@ SPRING_DATASOURCE_USERNAME=clippy
 SPRING_DATASOURCE_PASSWORD=clippy
 SERVER_PORT=8080
 CLIPPY_AUTH_BASE_URL=http://localhost:8081
+LOGGING_FILE_NAME=logs/clippy-server.log
+SPRING_JPA_HIBERNATE_DDL_AUTO=update
+SPRING_JPA_PROPERTIES_HIBERNATE_JDBC_TIME_ZONE=UTC
 ```
 
-Set those values in `.env` before running Maven to override them.
-Explicit Spring configuration, including shell exports and command-line arguments
-such as `--server.port=9090`, takes precedence over the file-derived defaults.
+Set those values in `.env` before starting the server.
+The core receives only the map resolved by the launcher; it does not read shell
+exports or Spring command-line configuration independently.
 
 ## Endpoint
 
@@ -106,7 +109,7 @@ requested client. A timeframe with `from` later than `to` returns `400`.
 
 ## Logging
 
-The app server writes its normal Spring Boot logs to `LOGGING_FILE_NAME` and also writes a custom audit log file named `clippy-server.txt` in the same directory by default.
+The app server writes its normal Spring Boot logs to `LOGGING_FILE_NAME` and also writes a custom audit log file named `clippy-server.txt` in the configured directory.
 
 Each successful `POST /clipboard` request records a line noting the `clientId`, generated entry id, and timestamp. Raw clipboard content is not written to the custom log.
 

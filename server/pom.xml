@@ -86,6 +86,7 @@
                 <version>4.1.0</version>
                 <configuration>
                     <classifier>exec</classifier>
+                    <mainClass>dev.clippy.server.ClippyServerLauncher</mainClass>
                 </configuration>
                 <executions>
                     <execution>
