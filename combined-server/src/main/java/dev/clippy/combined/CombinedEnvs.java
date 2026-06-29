@@ -8,6 +8,7 @@ import dev.clippy.utils.envmanager.EnvType;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
@@ -63,15 +64,33 @@ public final class CombinedEnvs {
             Path codeSourceLocation = Path.of(
                     CombinedEnvs.class.getProtectionDomain().getCodeSource().getLocation().toURI()
             ).toAbsolutePath().normalize();
-            Path moduleDirectory = codeSourceLocation.getParent() == null
-                    ? null
-                    : codeSourceLocation.getParent().getParent();
-            if (moduleDirectory == null) {
-                throw new IOException("Unable to resolve combined-server module directory from " + codeSourceLocation);
-            }
-            return moduleDirectory.resolve(".env");
+            Path workingDirectory = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
+            return defaultEnvFile(codeSourceLocation, workingDirectory);
         } catch (URISyntaxException e) {
-            throw new IOException("Unable to resolve combined-server env file location", e);
+            throw new IOException(missingEnvFileMessage(), e);
         }
+    }
+
+    static Path defaultEnvFile(Path codeSourceLocation) throws IOException {
+        Path workingDirectory = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
+        return defaultEnvFile(codeSourceLocation, workingDirectory);
+    }
+
+    static Path defaultEnvFile(Path codeSourceLocation, Path workingDirectory) throws IOException {
+        Path workingDirectoryEnvFile = workingDirectory.resolve(".env");
+        if (Files.isRegularFile(workingDirectoryEnvFile)) {
+            return workingDirectoryEnvFile;
+        }
+        Path moduleDirectory = codeSourceLocation.getParent() == null
+                ? null
+                : codeSourceLocation.getParent().getParent();
+        if (moduleDirectory == null) {
+            throw new IOException(missingEnvFileMessage());
+        }
+        return moduleDirectory.resolve(".env");
+    }
+
+    private static String missingEnvFileMessage() {
+        return "Missing combined server env file. Create combined-server/.env or set CLIPPY_ENV_FILE to its absolute path.";
     }
 }

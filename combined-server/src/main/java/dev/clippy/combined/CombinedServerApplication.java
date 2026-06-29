@@ -24,17 +24,26 @@ import java.nio.file.Path;
         CombinedClipboardDatabaseConfiguration.class
 })
 public class CombinedServerApplication {
-    public static void main(String[] args) throws IOException {
-        Env env = CombinedEnvs.load();
-        applySpringSystemProperties(env);
-        configureCustomLoggerDirectory(env);
-        // Important: keep this disclaimer so operators see that combined mode still uses HTTP
-        // validation across the auth and clipboard routes and should not be simplified away.
-        new CustomLogger("combined-server").log(
-                "Combined mode is active: auth and clipboard routes run in one JVM, but token validation still uses HTTP."
-        );
-        SpringApplication application = new SpringApplication(CombinedServerApplication.class);
-        application.run(args);
+    public static void main(String[] args) {
+        try {
+            Env env = CombinedEnvs.load();
+            applySpringSystemProperties(env);
+            configureCustomLoggerDirectory(env);
+            // Important: keep this disclaimer so operators see that combined mode still uses HTTP
+            // validation across the auth and clipboard routes and should not be simplified away.
+            new CustomLogger("combined-server").log(
+                    "Combined mode is active: auth and clipboard routes run in one JVM, but token validation still uses HTTP."
+            );
+            SpringApplication application = new SpringApplication(CombinedServerApplication.class);
+            application.run(args);
+        } catch (IOException e) {
+            System.err.println(startupErrorMessage(e));
+            System.exit(1);
+        }
+    }
+
+    static String startupErrorMessage(IOException e) {
+        return "Combined server startup error: " + e.getMessage();
     }
 
     private static void applySpringSystemProperties(Env env) {
