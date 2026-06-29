@@ -73,6 +73,11 @@ docker compose --profile combined up --build
 
 `COMPOSE_PROFILES=separate docker compose up --build` works too. Both profiles start the two Postgres databases (`5432` for clipboard, `5433` for auth); running with no profile starts nothing, on purpose. The combined target reads [`combined-server/docker-combined.env`](combined-server/docker-combined.env), which is mounted into the container and pointed at via `CLIPPY_ENV_FILE`. The separate targets take their config from the `environment:` blocks in the compose file.
 
+The separate profile exposes auth at `http://localhost:8081` and clipboard at
+`http://localhost:8080`. The combined profile exposes both through port `8080`:
+use `http://localhost:8080/auth` as `AUTH_SERVER_URL` and
+`http://localhost:8080/api` as `REMOTE_SERVER_URL`.
+
 The auth server uses `AUTH_DATASOURCE_*` values and the app server uses `SPRING_DATASOURCE_*` values. Set those to your Azure PostgreSQL connection details in `.env` or in the shell before running Maven. Use separate database names if you want isolation between auth and clipboard data.
 
 ```text
@@ -87,7 +92,8 @@ CLIPPY_AUTH_BASE_URL=http://localhost:8081
 
 Override `SERVER_PORT`, `AUTH_SERVER_PORT`, `CLIPPY_AUTH_BASE_URL`, or the datasource values in `.env` if you need different local settings.
 
-Create a client identity and login before running a client:
+For the separate profile, create a client identity and login before running a
+client:
 
 ```bash
 curl -i http://localhost:8081/identities \
@@ -100,6 +106,18 @@ curl -s http://localhost:8081/login \
 ```
 
 Put the returned token in `CLIENT_TOKEN`.
+
+For the combined profile, use the prefixed auth routes instead:
+
+```bash
+curl -i http://localhost:8080/auth/identities \
+  -H 'Content-Type: application/json' \
+  -d '{"clientId":"dummy","secret":"change-me-please"}'
+
+curl -s http://localhost:8080/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"clientId":"dummy","secret":"change-me-please"}'
+```
 
 ## Run the macOS Client
 
@@ -239,6 +257,10 @@ POST /clipboard
 Content-Type: application/json
 Authorization: Bearer <client-token>
 ```
+
+Combined deployments use the prefixed route `POST /api/clipboard`; clients
+configured with `REMOTE_SERVER_URL=http://localhost:8080/api` append
+`/clipboard` automatically.
 
 ```json
 {

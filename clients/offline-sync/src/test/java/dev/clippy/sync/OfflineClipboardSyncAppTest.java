@@ -268,6 +268,24 @@ class OfflineClipboardSyncAppTest {
     }
 
     @Test
+    void deadLettersUnknownRecordTypeInsteadOfDroppingIt() {
+        String content = """
+                [
+                  {"type":"future-event","clientId":"client-a","timestamp":"2026-06-23T12:00:00Z"},
+                  {"type":"auth","clientId":"client-a","operation":"refresh","timestamp":"2026-06-23T12:01:00Z"}
+                ]
+                """;
+
+        OfflineClipboardSyncApp.ClipboardSnapshot snapshot =
+                OfflineClipboardSyncApp.parseClipboardSnapshot(content, tempDir.resolve("offline.json"));
+
+        assertEquals(0, snapshot.records().size());
+        assertEquals(1, snapshot.rejections().size());
+        assertEquals("unknown-type", snapshot.rejections().getFirst().stage());
+        assertTrue(snapshot.rejections().getFirst().reason().contains("future-event"));
+    }
+
+    @Test
     void deadLettersPermanentPostRejectionAndContinuesWithLaterRecord() throws Exception {
         List<String> requests = new ArrayList<>();
         HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);

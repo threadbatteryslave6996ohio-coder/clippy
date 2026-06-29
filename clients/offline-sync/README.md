@@ -11,10 +11,11 @@ are not clipboard data. After every successful pass, the source JSON file is
 atomically cleared to `[]`. If another process appends during synchronization,
 the clear is skipped and the updated file is handled on the next pass.
 
-Malformed entries and records rejected by the server with a record-specific
-`400`, `413`, `415`, or `422` response are appended to a sibling dead-letter
-file before synchronization continues. For the default input, that file is
-`clippy-offline-clipboard-dead-letter.json`. Each dead-letter entry records the
+Malformed entries, unknown record types, and records rejected by the server
+with a record-specific `400`, `413`, `415`, or `422` response are appended to a
+sibling dead-letter file before synchronization continues. Known auth audit
+records remain intentionally ignored. For the default input, the dead-letter
+file is `clippy-offline-clipboard-dead-letter.json`. Each entry records the
 processing stage, rejection reason, and original JSON. Dead-letter appends are
 idempotent. The source snapshot is not cleared unless every rejected entry was
 safely recorded.
