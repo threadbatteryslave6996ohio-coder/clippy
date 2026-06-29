@@ -341,10 +341,15 @@ public final class OfflineClipboardSyncApp {
         for (int index = 0; index < array.size(); index++) {
             JsonNode node = array.get(index);
             String type = node.path("type").asText("");
-            if (!type.isEmpty() && !"clipboard".equals(type)) {
+            if ("auth".equals(type)) {
                 continue;
             }
             String context = "offline entry " + index;
+            if (!type.isEmpty() && !"clipboard".equals(type)) {
+                rejections.add(new RejectedRecord(
+                        "unknown-type", context + ": Unsupported record type '" + type + "'", node.toString()));
+                continue;
+            }
             try {
                 String entryContent = requiredText(node, "content");
                 records.add(new ClipboardRecord(
