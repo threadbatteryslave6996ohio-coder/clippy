@@ -144,7 +144,7 @@ Keep the file-locker running, then build and start the macOS client in another t
 
 ```bash
 cd ~/Desktop/clippy
-mvn -pl clients/mac package
+mvn -pl clients/mac -am package
 java -jar clients/mac/target/clippy-client-0.1.0-SNAPSHOT.jar
 ```
 
@@ -215,14 +215,14 @@ Use the dummy client to send command text directly to the server without reading
 
 ```bash
 cd ~/Desktop/clippy
-mvn -pl clients/dummy package
+mvn -pl clients/dummy -am package
 java -jar clients/dummy/target/clippy-dummy-client-0.1.0-SNAPSHOT.jar "ping"
 ```
 
 If Maven is not already running on JDK 25, pin `JAVA_HOME` for the build:
 
 ```bash
-JAVA_HOME=/usr/lib/jvm/java-25-openjdk-arm64 mvn -pl clients/dummy package
+JAVA_HOME=/usr/lib/jvm/java-25-openjdk-arm64 mvn -pl clients/dummy -am package
 ```
 
 The dummy client reads `REMOTE_SERVER_URL` and `CLIENT_ID` from `.env` in the repository root. You can also pipe commands on stdin. Each non-empty line is sent as one command.

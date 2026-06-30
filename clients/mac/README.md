@@ -31,7 +31,7 @@ CLIPBOARD_POLL_INTERVAL_MS=1000
 Then build and start the client:
 
 ```bash
-mvn -pl clients/mac package
+mvn -pl clients/mac -am package
 java -jar clients/mac/target/clippy-client-0.1.0-SNAPSHOT.jar
 ```
 
@@ -88,7 +88,7 @@ Use this if you want to log in once and reuse the returned token.
    Then start the macOS client in another terminal:
 
    ```bash
-   mvn -pl clients/mac package
+   mvn -pl clients/mac -am package
    java -jar clients/mac/target/clippy-client-0.1.0-SNAPSHOT.jar
    ```
 
@@ -116,7 +116,7 @@ Use this if you want the client to fetch a fresh token from the auth server auto
 3. Start the client.
 
    ```bash
-   mvn -pl clients/mac package
+   mvn -pl clients/mac -am package
    java -jar clients/mac/target/clippy-client-0.1.0-SNAPSHOT.jar
    ```
 

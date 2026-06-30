@@ -19,6 +19,9 @@ Start the service before either client:
 ./scripts/start-file-locker.sh
 ```
 
+Maven packaging keeps the thin `clippy-file-locker` JAR for other modules and
+creates the runnable `clippy-file-locker-0.1.0-SNAPSHOT-exec.jar` separately.
+
 The default socket is `/tmp/clippy-offline-file-locker.sock`. Override it for
 the service and both clients with the same environment or `.env` value:
 

@@ -56,13 +56,13 @@ From the repository root:
 4. Build the dummy client.
 
    ```bash
-   mvn -pl clients/dummy package
+   mvn -pl clients/dummy -am package
    ```
 
    If Maven is not already running on JDK 25, pin `JAVA_HOME` for the build:
 
    ```bash
-   JAVA_HOME=/usr/lib/jvm/java-25-openjdk-arm64 mvn -pl clients/dummy package
+   JAVA_HOME=/usr/lib/jvm/java-25-openjdk-arm64 mvn -pl clients/dummy -am package
    ```
 
 5. Send a command.
@@ -76,7 +76,7 @@ From the repository root:
 Build and send one command:
 
 ```bash
-mvn -pl clients/dummy package
+mvn -pl clients/dummy -am package
 java -jar clients/dummy/target/clippy-dummy-client-0.1.0-SNAPSHOT.jar "ping"
 ```
 

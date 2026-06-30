@@ -15,13 +15,15 @@
     <dependencies>
         <dependency>
             <groupId>dev.clippy</groupId>
-            <artifactId>clippy-file-locker</artifactId>
-            <version>${project.version}</version>
+            <artifactId>clippy-client-envs</artifactId>
         </dependency>
         <dependency>
             <groupId>dev.clippy</groupId>
-            <artifactId>clippy-auth-client</artifactId>
-            <version>${project.version}</version>
+            <artifactId>clippy-file-locker</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>dev.clippy</groupId>
+            <artifactId>clippy-utils</artifactId>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
@@ -31,7 +33,6 @@
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <version>5.11.4</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -39,38 +40,8 @@
     <build>
         <plugins>
             <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>build-helper-maven-plugin</artifactId>
-                <version>3.6.0</version>
-                <executions>
-                    <execution>
-                        <id>add-shared-client-sources</id>
-                        <phase>generate-sources</phase>
-                        <goals><goal>add-source</goal></goals>
-                        <configuration>
-                            <sources>
-                                <source>../client-envs/src/main/java</source>
-                                <source>../../utils/src/main/java</source>
-                            </sources>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
-                <configuration><release>${java.version}</release></configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.3.1</version>
-            </plugin>
-            <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
-                <version>3.6.0</version>
                 <executions>
                     <execution>
                         <phase>package</phase>

@@ -27,12 +27,10 @@
         <dependency>
             <groupId>dev.clippy</groupId>
             <artifactId>clippy-auth-client</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>dev.clippy</groupId>
             <artifactId>clippy-utils</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -73,14 +71,6 @@
     <build>
         <plugins>
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
-                <configuration>
-                    <release>${java.version}</release>
-                </configuration>
-            </plugin>
-            <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>4.1.0</version>
@@ -95,11 +85,6 @@
                         </goals>
                     </execution>
                 </executions>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.3.1</version>
             </plugin>
         </plugins>
     </build>
