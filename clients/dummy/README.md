@@ -1,127 +1,51 @@
 # Clippy Dummy Client
 
-Small Java client for sending command text directly to the Clippy server over HTTP.
+Command-line Java client that sends text as clipboard content without reading a
+system clipboard.
 
-This client does not read the system clipboard. It sends command text as the `content` field in the same `/clipboard` request contract used by the other clients.
+## Configure
 
-## Requirements
+Start the auth and clipboard servers, create an identity as described in the
+[auth server documentation](../../auth/server/README.md), then configure the
+repository-root `.env`:
 
-- JDK 25+
-- Maven 3.9+
-- A running Clippy auth server and app server
+```dotenv
+REMOTE_SERVER_URL=http://localhost:8080
+AUTH_SERVER_URL=http://localhost:8081
+CLIENT_ID=dummy
+CLIENT_SECRET=change-me-please
+```
 
-## Setup
+`REMOTE_SERVER_URL` is required and may be the server base URL or the full
+`/clipboard` endpoint. With `CLIENT_SECRET`, the client logs in and refreshes
+its token automatically; `AUTH_SERVER_URL` is then required. For static
+authentication, omit `CLIENT_SECRET` and provide `CLIENT_TOKEN` instead.
 
-From the repository root:
+`CLIENT_ID` defaults to `dummy-` plus the machine hostname. Shell environment
+variables override `.env` values.
 
-1. Start PostgreSQL, the auth server, and the app server.
+## Run
 
-   The dummy client sends requests to the same `/clipboard` endpoint as the desktop and Android clients. For local development, the server normally runs at `http://localhost:8080`.
-
-   Start the auth database on port `5433` and the app database on port `5432` using your preferred local PostgreSQL setup, then run the auth server and app server.
-
-2. Create a client identity.
-
-   ```bash
-   curl -i http://localhost:8081/identities \
-     -H 'Content-Type: application/json' \
-     -d '{"clientId":"dummy","secret":"change-me-please"}'
-   ```
-
-   The client logs in with this identity itself, so you do not need to call
-   `/login` and copy a token by hand.
-
-3. Configure the client.
-
-   Create or update `.env` in the repository root:
-
-   ```dotenv
-   REMOTE_SERVER_URL=http://localhost:8080
-   AUTH_SERVER_URL=http://localhost:8081
-   CLIENT_ID=dummy
-   CLIENT_SECRET=change-me-please
-   ```
-
-   `REMOTE_SERVER_URL` is required. It may be either the server base URL, such as `http://localhost:8080`, or the full endpoint, such as `http://localhost:8080/clipboard`.
-
-   `CLIENT_SECRET` lets the client log in to the auth server with its identity and
-   refresh the token automatically on a `401`. `AUTH_SERVER_URL` is required when
-   `CLIENT_SECRET` is set. If you prefer a static token instead, leave
-   `CLIENT_SECRET` unset and provide `CLIENT_TOKEN` (the token returned by the auth
-   server `/login` endpoint). `CLIENT_ID` is optional and defaults to `dummy-` plus
-   the machine hostname, with a random fallback if hostname lookup fails.
-
-   Shell environment variables override values from `.env` when both are set.
-
-4. Build the dummy client.
-
-   ```bash
-   mvn -pl clients/dummy -am package
-   ```
-
-   If Maven is not already running on JDK 25, pin `JAVA_HOME` for the build:
-
-   ```bash
-   JAVA_HOME=/usr/lib/jvm/java-25-openjdk-arm64 mvn -pl clients/dummy -am package
-   ```
-
-5. Send a command.
-
-   ```bash
-   java -jar clients/dummy/target/clippy-dummy-client-0.1.0-SNAPSHOT.jar "ping"
-   ```
-
-## Run the Client
-
-Build and send one command:
+Build and send one command from the repository root:
 
 ```bash
 mvn -pl clients/dummy -am package
 java -jar clients/dummy/target/clippy-dummy-client-0.1.0-SNAPSHOT.jar "ping"
 ```
 
-Or override `.env` from the shell:
-
-```bash
-REMOTE_SERVER_URL=http://localhost:8080 AUTH_SERVER_URL=http://localhost:8081 \
-  CLIENT_ID=dummy CLIENT_SECRET=change-me-please \
-  java -jar clients/dummy/target/clippy-dummy-client-0.1.0-SNAPSHOT.jar "ping"
-```
-
-You can also pipe commands on stdin. Each non-empty line is sent as one command:
+You can also pipe commands on standard input. Each non-empty line is sent as a
+separate request:
 
 ```bash
 printf 'ping\nstatus\n' | java -jar clients/dummy/target/clippy-dummy-client-0.1.0-SNAPSHOT.jar
 ```
 
-## Failure Logs
+One-shot commands exit with status `1` when the server is unreachable or
+rejects the request. The client logs the endpoint and HTTP status without
+printing credentials.
 
-If the server cannot be reached, the client logs a clear error and exits with status `1` for one-shot commands:
+## Test
 
-```text
-Cannot reach remote server. endpoint=http://localhost:8080/clipboard error=...
-```
-
-If the server responds with a non-2xx status code, the client logs:
-
-```text
-Remote server rejected command. endpoint=http://localhost:8080/clipboard httpStatus=...
-```
-
-## Server Contract
-
-The client sends:
-
-```http
-POST /clipboard
-Authorization: Bearer <client-token>
-Content-Type: application/json
-```
-
-```json
-{
-  "clientId": "dummy",
-  "content": "ping",
-  "timestamp": "2026-06-23T12:00:00Z"
-}
+```bash
+mvn -pl clients/dummy -am test
 ```

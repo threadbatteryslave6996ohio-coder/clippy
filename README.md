@@ -1,28 +1,25 @@
 # Clippy
 
-Clippy records text clipboard changes from desktop and Android clients in a Spring Boot server backed by PostgreSQL.
+Clippy records text clipboard changes from desktop and Android clients in a
+Spring Boot server backed by PostgreSQL.
 
-The `auth/` directory is a git submodule. After cloning, run `git submodule update --init --recursive` before building.
-
-Client-specific docs:
-
-- Auth server: [auth/server/README.md](auth/server/README.md)
-- Auth client Java module: [auth/client/README.md](auth/client/README.md)
-- macOS: [clients/mac/README.md](clients/mac/README.md)
-- Linux GNOME: [clients/linux/README.md](clients/linux/README.md)
-- Offline sync: [clients/offline-sync/README.md](clients/offline-sync/README.md)
-- Offline file locker: [clients/file-locker/README.md](clients/file-locker/README.md)
-- Dummy: [clients/dummy/README.md](clients/dummy/README.md)
-- Android: [clients/android/README.md](clients/android/README.md)
+The Java code is a JDK 25 multi-module Maven project. The Android client is a
+separate Kotlin/Gradle project under `clients/android`.
 
 ## Requirements
 
-- JDK 25+ with `javac` available on `PATH`
+- JDK 25+ with `javac` on `PATH`
 - Maven 3.9+
-- Docker and Docker Compose for the local PostgreSQL database
-- Android Studio for the Android client
+- Docker with Compose for local databases and integration tests
+- Android Studio or a compatible Android toolchain for the Android client
 
-Verify the Java install before running Maven:
+The `auth/` directory is a git submodule. Initialize it after cloning:
+
+```bash
+git submodule update --init --recursive
+```
+
+Verify the Java toolchain before troubleshooting Maven compilation errors:
 
 ```bash
 java -version
@@ -30,266 +27,95 @@ javac -version
 mvn -version
 ```
 
-If Maven fails with `release version 25 not supported`, install a full JDK rather than a JRE and point `JAVA_HOME` at it. On Ubuntu, for example:
+## Build and Test
+
+Build every Java module from the repository root:
 
 ```bash
-sudo apt install openjdk-25-jdk
-export JAVA_HOME=/usr/lib/jvm/java-25-openjdk-arm64
-export PATH="$JAVA_HOME/bin:$PATH"
+mvn package
 ```
 
-## Start the Server
-
-Start PostgreSQL for the auth server and app server using your preferred local setup. The auth server needs a database on port `5433`, and the app server needs a database on port `5432`.
-
-Run the auth server in one terminal:
+Run tests without packaging:
 
 ```bash
-cd ~/Desktop/clippy
-mvn -pl auth/server spring-boot:run
+mvn test
 ```
 
-Build and run the app server in another terminal:
+Server integration tests use Testcontainers and require Docker. To work on one
+module while also building its dependencies, use:
 
 ```bash
-cd ~/Desktop/clippy
-mvn -pl server -am package
-java -jar server/target/clippy-server-0.1.0-SNAPSHOT-exec.jar
+mvn -pl <module> -am test
+mvn -pl <module> -am package
 ```
 
-The auth server listens on `http://localhost:8081` and the app server listens on `http://localhost:8080` by default. Both servers read their settings from the repository root `.env` through the shared env manager.
+The Android project is built separately from `clients/android`; see its README
+for the available toolchain and tasks.
 
-### Run the whole stack with Docker
+## Run Locally
 
-A root [`Dockerfile`](Dockerfile) builds all three deployment jars and [`docker-compose.yml`](docker-compose.yml) wires them up with Postgres. The deployment shape is selected with a compose **profile** — this is the flag:
+The simplest complete deployment uses a Docker Compose profile:
 
 ```bash
-# Separate deployment: auth server (8081) + clipboard server (8080) in their own JVMs
+# Auth server on 8081 and clipboard server on 8080
 docker compose --profile separate up --build
 
-# Combined deployment: auth + clipboard routes in a single JVM (8080)
+# Auth and clipboard routes in one JVM on 8080
 docker compose --profile combined up --build
 ```
 
-`COMPOSE_PROFILES=separate docker compose up --build` works too. Both profiles start the two Postgres databases (`5432` for clipboard, `5433` for auth); running with no profile starts nothing, on purpose. The combined target reads [`combined-server/docker-combined.env`](combined-server/docker-combined.env), which is mounted into the container and pointed at via `CLIPPY_ENV_FILE`. The separate targets take their config from the `environment:` blocks in the compose file.
+Running Compose without a profile intentionally starts no services. The
+separate deployment uses `http://localhost:8081` for auth and
+`http://localhost:8080` for clipboard requests. The combined deployment uses
+`http://localhost:8080/auth` and `http://localhost:8080/api` respectively.
 
-The separate profile exposes auth at `http://localhost:8081` and clipboard at
-`http://localhost:8080`. The combined profile exposes both through port `8080`:
-use `http://localhost:8080/auth` as `AUTH_SERVER_URL` and
-`http://localhost:8080/api` as `REMOTE_SERVER_URL`.
+For a host-based Linux development stack, configure the repository-root `.env`
+and run:
 
-The auth server uses `AUTH_DATASOURCE_*` values and the app server uses `SPRING_DATASOURCE_*` values. Set those to your Azure PostgreSQL connection details in `.env` or in the shell before running Maven. Use separate database names if you want isolation between auth and clipboard data.
-
-```text
-AUTH_DATASOURCE_URL=jdbc:postgresql://localhost:5433/auth
-AUTH_DATASOURCE_USERNAME=auth
-AUTH_DATASOURCE_PASSWORD=auth
-SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/clippy
-SPRING_DATASOURCE_USERNAME=clippy
-SPRING_DATASOURCE_PASSWORD=clippy
-CLIPPY_AUTH_BASE_URL=http://localhost:8081
+```bash
+./scripts/start-local-stack-tmux.sh
 ```
 
-Override `SERVER_PORT`, `AUTH_SERVER_PORT`, `CLIPPY_AUTH_BASE_URL`, or the datasource values in `.env` if you need different local settings.
+This starts the auth server, clipboard server, file-locker, Linux client, and
+offline sync client in a `clippy` tmux session. Pass `--detached` to avoid
+attaching immediately.
 
-For the separate profile, create a client identity and login before running a
-client:
+## Client Authentication
+
+Create an identity once on the auth server:
 
 ```bash
 curl -i http://localhost:8081/identities \
   -H 'Content-Type: application/json' \
   -d '{"clientId":"dummy","secret":"change-me-please"}'
-
-curl -s http://localhost:8081/login \
-  -H 'Content-Type: application/json' \
-  -d '{"clientId":"dummy","secret":"change-me-please"}'
 ```
 
-Put the returned token in `CLIENT_TOKEN`.
-
-For the combined profile, use the prefixed auth routes instead:
-
-```bash
-curl -i http://localhost:8080/auth/identities \
-  -H 'Content-Type: application/json' \
-  -d '{"clientId":"dummy","secret":"change-me-please"}'
-
-curl -s http://localhost:8080/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"clientId":"dummy","secret":"change-me-please"}'
-```
-
-## Run the macOS Client
-
-Run the macOS client from a logged-in graphical session so Java can read the system clipboard:
-
-Create or update `.env` in the repository root:
+Java clients can log in and refresh tokens automatically with this
+repository-root `.env` configuration:
 
 ```dotenv
 REMOTE_SERVER_URL=http://localhost:8080
 AUTH_SERVER_URL=http://localhost:8081
-CLIENT_ID=my-mac
+CLIENT_ID=dummy
 CLIENT_SECRET=change-me-please
-CLIPBOARD_POLL_INTERVAL_MS=1000
 ```
 
-Then build and start the client:
+Alternatively, call `/login` and provide the returned value as `CLIENT_TOKEN`.
+Shell environment variables override `.env` values.
 
-```bash
-cd ~/Desktop/clippy
-./scripts/start-file-locker.sh
-```
+## Documentation
 
-Keep the file-locker running, then build and start the macOS client in another terminal:
+- [Clipboard server](server/README.md)
+- [Combined server](combined-server/README.md)
+- [Auth server](auth/server/README.md)
+- [Auth client module](auth/client/README.md)
+- [macOS client](clients/mac/README.md)
+- [Linux client](clients/linux/README.md)
+- [Offline sync client](clients/offline-sync/README.md)
+- [Offline file-locker](clients/file-locker/README.md)
+- [Dummy client](clients/dummy/README.md)
+- [Android client](clients/android/README.md)
+- [Azure infrastructure](devops/README.md)
 
-```bash
-cd ~/Desktop/clippy
-mvn -pl clients/mac -am package
-java -jar clients/mac/target/clippy-client-0.1.0-SNAPSHOT.jar
-```
-
-`REMOTE_SERVER_URL` can be the server base URL or the full `/clipboard` endpoint. `CLIENT_ID` defaults to the machine hostname, with a random fallback if hostname lookup fails. `CLIPBOARD_POLL_INTERVAL_MS` defaults to `1`.
-`CLIENT_SECRET` lets the client log in to the auth server and refresh tokens on `401`. `AUTH_SERVER_URL` is required when `CLIENT_SECRET` is set. If you prefer a static token, keep `CLIENT_SECRET` unset and provide `CLIENT_TOKEN` instead.
-Java desktop clients also read these values from `.env` in the repository root, with shell environment variables taking precedence.
-
-See [clients/mac/README.md](clients/mac/README.md) for the macOS-client-specific notes.
-
-## Run the Linux GNOME Client
-
-Install a native clipboard helper on Ubuntu GNOME:
-
-```bash
-sudo apt install wl-clipboard xclip
-```
-
-Start the Clippy server first. Then start the local file-locker service:
-
-```bash
-cd ~/Desktop/clippy
-./scripts/start-file-locker.sh
-```
-
-Keep it running and start the Linux client from a logged-in graphical session in another terminal:
-
-```bash
-cd ~/Desktop/clippy
-./scripts/start-linux-client.sh
-```
-
-To launch the local auth server, app server, file-locker, Linux client, and
-offline sync client together inside tmux:
-
-```bash
-cd ~/Desktop/clippy
-./scripts/start-local-stack-tmux.sh
-```
-
-The script creates a `clippy` tmux session with a `stack` window for the auth
-server, app server, file-locker, and Linux client, plus a `sync` window for the
-offline sync client. Pass a different session name as the first argument to
-override `clippy`. Pass `--detached` to create the session without attaching:
-
-```bash
-./scripts/start-local-stack-tmux.sh --detached
-```
-
-`REMOTE_SERVER_URL` is required. It can be the server base URL, such as `http://localhost:8080`, or the full endpoint, such as `http://localhost:8080/clipboard`.
-
-`CLIENT_ID` is optional and defaults to the machine hostname, with a random fallback if hostname lookup fails. `CLIPBOARD_POLL_INTERVAL_MS` is optional and defaults to `1000`.
-`CLIENT_SECRET` lets the client log in to the auth server and refresh tokens on `401`. `AUTH_SERVER_URL` is required when `CLIENT_SECRET` is set. If you prefer a static token, keep `CLIENT_SECRET` unset and provide `CLIENT_TOKEN` instead.
-Java desktop clients also read these values from `.env` in the repository root, with shell environment variables taking precedence.
-
-The client polls the local text clipboard and sends changed text to the server. It uses `wl-paste` on GNOME Wayland, `xclip` or `xsel` on X11, and Java AWT as a fallback.
-
-To force a clipboard backend, set `CLIPBOARD_BACKEND` before starting the client:
-
-```bash
-export CLIPBOARD_BACKEND=wl-paste
-```
-
-Supported values are `wl-paste`, `wayland`, `xclip`, `xsel`, `awt`, and `java`. See [clients/linux/README.md](clients/linux/README.md) for the Linux-client-specific notes.
-
-## Run the Dummy Client
-
-Use the dummy client to send command text directly to the server without reading a system clipboard:
-
-```bash
-cd ~/Desktop/clippy
-mvn -pl clients/dummy -am package
-java -jar clients/dummy/target/clippy-dummy-client-0.1.0-SNAPSHOT.jar "ping"
-```
-
-If Maven is not already running on JDK 25, pin `JAVA_HOME` for the build:
-
-```bash
-JAVA_HOME=/usr/lib/jvm/java-25-openjdk-arm64 mvn -pl clients/dummy -am package
-```
-
-The dummy client reads `REMOTE_SERVER_URL` and `CLIENT_ID` from `.env` in the repository root. You can also pipe commands on stdin. Each non-empty line is sent as one command.
-`CLIENT_SECRET` lets the dummy client log in to the auth server with its identity and refresh tokens on `401`, just like the desktop clients. `AUTH_SERVER_URL` is required when `CLIENT_SECRET` is set. If you prefer a static token, keep `CLIENT_SECRET` unset and provide `CLIENT_TOKEN` (the token returned by the auth server `/login` endpoint) instead.
-
-See [clients/dummy/README.md](clients/dummy/README.md) for the dummy-client-specific notes.
-
-## Run the Android Client
-
-Open `clients/android` in Android Studio and run the `app` configuration.
-
-Use your computer's LAN IP address from a physical Android device:
-
-```text
-http://192.168.1.10:8080
-```
-
-Use this address from the Android emulator:
-
-```text
-http://10.0.2.2:8080
-```
-
-See [clients/android/README.md](clients/android/README.md) for Android behavior, build, and local-server notes.
-
-## API
-
-Clients send clipboard entries to:
-
-```http
-POST /clipboard
-Content-Type: application/json
-Authorization: Bearer <client-token>
-```
-
-Combined deployments use the prefixed route `POST /api/clipboard`; clients
-configured with `REMOTE_SERVER_URL=http://localhost:8080/api` append
-`/clipboard` automatically.
-
-```json
-{
-  "clientId": "macbook-pro",
-  "content": "clipboard text",
-  "timestamp": "2026-06-23T12:00:00Z"
-}
-```
-
-The server returns `201 Created` with the saved entry id, client id, and timestamp.
-
-Authenticated clients can query their clipboard entries over an inclusive
-timeframe with `GET /clipboard?clientId=...&from=...&to=...`. The offline sync
-client uses this endpoint to upload only locally logged entries that are absent
-from the database. Optional `limit` (1-1000), `afterTimestamp`, and `afterId`
-parameters provide cursor pagination; both cursor parameters must be supplied
-together. Clipboard content is limited to 1,000,000 characters. Run the syncer
-with `./scripts/sync-offline-client.sh`.
-
-Desktop clients skip clipboard values above that limit without sending them or
-writing them to the offline JSON log.
-
-## Tests
-
-Run the Maven tests:
-
-```bash
-cd ~/Desktop/clippy
-mvn test
-```
-
-The server integration tests use Testcontainers and require a working Docker daemon.
+The server READMEs document the HTTP contracts, configuration, and deployment
+details. Each client README covers only that client's setup and behavior.

@@ -6,25 +6,8 @@ The server does not own client identities. It validates each clipboard request b
 
 ## Requirements
 
-- JDK 25+ with `javac` available on `PATH`
-- Maven 3.9+
-- Docker and Docker Compose for local PostgreSQL
-
-Verify the Java install before running Maven:
-
-```bash
-java -version
-javac -version
-mvn -version
-```
-
-If Maven fails with `release version 25 not supported`, install a full JDK rather than a JRE and point `JAVA_HOME` at it. On Ubuntu, for example:
-
-```bash
-sudo apt install openjdk-25-jdk
-export JAVA_HOME=/usr/lib/jvm/java-25-openjdk-arm64
-export PATH="$JAVA_HOME/bin:$PATH"
-```
+Use the JDK, Maven, and Docker versions listed in the [root README](../README.md).
+Docker is required for local PostgreSQL and Testcontainers-based tests.
 
 ## Start Locally
 
@@ -106,6 +89,10 @@ Authorization: Bearer <client-token>
 The response is ordered by timestamp and id and includes each entry's `id`,
 `clientId`, `content`, and `timestamp`. The bearer token must belong to the
 requested client. A timeframe with `from` later than `to` returns `400`.
+
+Optional `limit` (1-1000), `afterTimestamp`, and `afterId` parameters provide
+cursor pagination. Both cursor parameters must be supplied together. Clipboard
+content is limited to 1,000,000 characters.
 
 ## Logging
 

@@ -4,7 +4,7 @@ Spring Boot deployment target that runs the auth routes and clipboard routes in 
 
 ## Start Locally
 
-Copy [`.env.example`](/home/kamina_goat/Desktop/clippy/combined-server/.env.example) to `combined-server/.env`, or point `CLIPPY_ENV_FILE` at another file. The launcher selects only that file, applies nonblank shell values as overrides, and fails fast if the file is missing:
+Copy [`.env.example`](.env.example) to `combined-server/.env`, or point `CLIPPY_ENV_FILE` at another file. The launcher selects only that file, applies nonblank shell values as overrides, and fails fast if the file is missing:
 
 ```dotenv
 COMBINED_SERVER_PORT=8080
