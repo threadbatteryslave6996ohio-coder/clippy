@@ -1,5 +1,7 @@
 package dev.clippy.utils.logger;
 
+import dev.clippy.utils.Strings;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -11,12 +13,21 @@ public final class CustomLogger {
 
     private final String name;
 
+    /**
+     * Points the custom logger at the directory that holds {@code logFileName}. The server and client
+     * bootstrap classes all derive {@code custom.logger.dir} from their configured logging file the same
+     * way; this consolidates that logic. A blank file name, or one with no parent directory, falls back
+     * to the working directory.
+     */
+    public static void configureDirectoryFromLogFile(String logFileName) {
+        Path loggingPath = Path.of(logFileName == null ? "" : logFileName.trim());
+        Path parentDirectory = loggingPath.getParent();
+        String directory = parentDirectory == null ? Path.of(".").toString() : parentDirectory.toString();
+        System.setProperty(LOG_DIRECTORY_PROPERTY, directory);
+    }
+
     public CustomLogger(String name) {
-        String trimmed = name == null ? "" : name.trim();
-        if (trimmed.isEmpty()) {
-            throw new IllegalArgumentException("name cannot be blank.");
-        }
-        this.name = trimmed;
+        this.name = Strings.requireNonBlank(name, "name");
     }
 
     public synchronized void log(String message) {

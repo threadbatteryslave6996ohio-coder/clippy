@@ -11,19 +11,11 @@
 
     <artifactId>clippy-combined-server</artifactId>
 
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-dependencies</artifactId>
-                <version>4.1.0</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
-
     <dependencies>
+        <dependency>
+            <groupId>dev.clippy</groupId>
+            <artifactId>clippy-server-bootstrap</artifactId>
+        </dependency>
         <dependency>
             <groupId>dev.clippy</groupId>
             <artifactId>clippy-server</artifactId>
@@ -57,13 +49,11 @@
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <version>1.21.4</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>postgresql</artifactId>
-            <version>1.21.4</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -73,7 +63,6 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
-                <version>4.1.0</version>
                 <configuration>
                     <mainClass>dev.clippy.combined.CombinedServerLauncher</mainClass>
                 </configuration>

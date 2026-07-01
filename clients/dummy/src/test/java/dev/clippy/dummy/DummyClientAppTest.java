@@ -1,30 +1,32 @@
 package dev.clippy.dummy;
 
+import dev.clippy.clients.core.ClipboardApiClient;
+import dev.clippy.clients.envs.ClientAuthSession;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
 import java.net.URI;
+import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class DummyClientAppTest {
     @Test
-    void normalizesClipboardEndpoints() throws Exception {
-        assertEquals(URI.create("http://localhost:8080/clipboard"), invokeStaticUri("clipboardEndpoint", "http://localhost:8080"));
-        assertEquals(URI.create("http://localhost:8080/clipboard"), invokeStaticUri("clipboardEndpoint", "http://localhost:8080/"));
-        assertEquals(URI.create("http://localhost:8080/clipboard"), invokeStaticUri("clipboardEndpoint", "http://localhost:8080/clipboard"));
+    void joinsCommandLineArguments() throws Exception {
+        assertEquals("hello world from clippy", invokeStaticString("joinArgs", new String[] {"hello", "world", "from", "clippy"}));
     }
 
     @Test
-    void joinsCommandLineArgumentsAndEscapesJson() throws Exception {
-        assertEquals("hello world from clippy", invokeStaticString("joinArgs", new String[] {"hello", "world", "from", "clippy"}));
-        assertEquals("quote\\\" newline\\n tab\\t slash\\\\", invokeStaticString("jsonEscape", "quote\" newline\n tab\t slash\\"));
-    }
+    void authFailureDuringSendIsReportedInsteadOfCrashingTheClient() {
+        // No token and no secret: ClipboardApiClient.create -> authSession.token() throws
+        // IllegalStateException. sendCommand must swallow it and report a normal failure.
+        URI endpoint = URI.create("http://127.0.0.1:1/clipboard");
+        ClientAuthSession noCredentials = new ClientAuthSession(null, "dummy", null, null);
+        ClipboardApiClient apiClient = new ClipboardApiClient(endpoint, noCredentials, Duration.ofMillis(100));
+        DummyClientApp app = new DummyClientApp(apiClient, endpoint, "dummy");
 
-    private static URI invokeStaticUri(String methodName, String argument) throws Exception {
-        Method method = DummyClientApp.class.getDeclaredMethod(methodName, String.class);
-        method.setAccessible(true);
-        return (URI) method.invoke(null, argument);
+        assertFalse(app.sendCommand("hello"));
     }
 
     private static String invokeStaticString(String methodName, String[] arguments) throws Exception {
@@ -33,9 +35,4 @@ class DummyClientAppTest {
         return (String) method.invoke(null, (Object) arguments);
     }
 
-    private static String invokeStaticString(String methodName, String argument) throws Exception {
-        Method method = DummyClientApp.class.getDeclaredMethod(methodName, String.class);
-        method.setAccessible(true);
-        return (String) method.invoke(null, argument);
-    }
 }

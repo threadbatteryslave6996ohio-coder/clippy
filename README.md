@@ -107,7 +107,9 @@ Shell environment variables override `.env` values.
 
 - [Clipboard server](server/README.md)
 - [Combined server](combined-server/README.md)
+- [Shared server bootstrap](server-bootstrap/README.md)
 - [Auth server](auth/server/README.md)
+- [Auth API contracts](auth/api/README.md)
 - [Auth client module](auth/client/README.md)
 - [macOS client](clients/mac/README.md)
 - [Linux client](clients/linux/README.md)

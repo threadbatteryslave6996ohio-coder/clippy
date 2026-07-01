@@ -1,5 +1,7 @@
 package dev.clippy.utils.envmanager;
 
+import dev.clippy.utils.Strings;
+
 import java.util.Objects;
 import java.util.Optional;
 
@@ -56,11 +58,6 @@ public final class EnvOption<T> {
     }
 
     private static String validateName(String name) {
-        Objects.requireNonNull(name, "name");
-        String trimmed = name.trim();
-        if (trimmed.isEmpty()) {
-            throw new IllegalArgumentException("Environment option name cannot be blank");
-        }
-        return trimmed;
+        return Strings.requireNonBlank(name, "Environment option name");
     }
 }
