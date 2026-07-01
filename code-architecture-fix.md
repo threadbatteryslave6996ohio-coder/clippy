@@ -207,9 +207,17 @@ Expected result:
   end-to-end loop
 - the app entry point stops being the policy coordinator
 
-## 6. Unify server launcher/application bootstrapping
+## 6. Unify server launcher/application bootstrapping — completed
 
 Priority: medium
+
+`SpringServerBootstrap.start(appClass, loggingFileName, beforeRun, properties, sourceName)`
+(in `server-bootstrap`, now depending on `utils`) owns the shared order: configure the
+logging directory, run any server-specific pre-start hook, then boot Spring. All three
+`start()` methods use it — `server` with no hook, `auth/server` passing
+`logLocalDatabaseIfApplicable`, `combined-server` passing `logCombinedModeDisclaimer` —
+so logging/property wiring changes happen once. The `run(...)` overload is retained.
+(The env-schema `from()`/`springProperties()` per module stays explicit — see item 8.)
 
 The three server modules still share the same startup shape with minor
 variations.
@@ -241,9 +249,14 @@ Expected result:
 - the server modules retain domain-specific env schemas without repeating the
   same application shell
 
-## 7. Remove repeated JPA property assembly in combined-server
+## 7. Remove repeated JPA property assembly in combined-server — completed
 
 Priority: medium
+
+`CombinedJpaProperties.from(Environment, ddlAutoProperty)` now owns the Hibernate
+property map (`hbm2ddl.auto` + `jdbc.time_zone`), and both `CombinedAuthDatabaseConfiguration`
+and `CombinedClipboardDatabaseConfiguration` call it instead of assembling the map inline.
+`CombinedJpaPropertiesTest` covers it.
 
 The two combined-server DB configuration classes duplicate the same Hibernate
 property construction.

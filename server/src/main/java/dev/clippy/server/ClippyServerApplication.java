@@ -2,7 +2,6 @@ package dev.clippy.server;
 
 import dev.clippy.bootstrap.SpringServerBootstrap;
 import dev.clippy.utils.envmanager.Env;
-import dev.clippy.utils.logger.CustomLogger;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 
@@ -17,8 +16,10 @@ public class ClippyServerApplication {
      */
     public static ConfigurableApplicationContext start(Map<String, String> environment) {
         Env env = ServerEnvs.from(environment);
-        CustomLogger.configureDirectoryFromLogFile(env.get(ServerEnvs.LOGGING_FILE_NAME));
-        Map<String, Object> properties = ServerEnvs.springProperties(env);
-        return SpringServerBootstrap.run(ClippyServerApplication.class, properties, "clippyServerLauncher");
+        return SpringServerBootstrap.start(
+                ClippyServerApplication.class,
+                env.get(ServerEnvs.LOGGING_FILE_NAME),
+                ServerEnvs.springProperties(env),
+                "clippyServerLauncher");
     }
 }

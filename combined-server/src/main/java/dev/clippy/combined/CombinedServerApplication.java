@@ -27,12 +27,14 @@ public class CombinedServerApplication {
     /** Starts the core from configuration that has already been fetched by a launcher. */
     public static ConfigurableApplicationContext start(Map<String, String> environment) {
         Env env = CombinedEnvs.from(environment);
-        CustomLogger.configureDirectoryFromLogFile(env.get(CombinedEnvs.LOGGING_FILE_NAME));
         // Important: keep this disclaimer so operators see that combined mode still uses HTTP
         // validation across the auth and clipboard routes and should not be simplified away.
-        logCombinedModeDisclaimer();
-        Map<String, Object> properties = CombinedEnvs.springProperties(env);
-        return SpringServerBootstrap.run(CombinedServerApplication.class, properties, "combinedServerLauncher");
+        return SpringServerBootstrap.start(
+                CombinedServerApplication.class,
+                env.get(CombinedEnvs.LOGGING_FILE_NAME),
+                CombinedServerApplication::logCombinedModeDisclaimer,
+                CombinedEnvs.springProperties(env),
+                "combinedServerLauncher");
     }
 
     static void logCombinedModeDisclaimer() {

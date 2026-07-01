@@ -17,5 +17,10 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot</artifactId>
         </dependency>
+        <dependency>
+            <groupId>dev.clippy</groupId>
+            <artifactId>clippy-utils</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 </project>

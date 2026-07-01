@@ -1,5 +1,6 @@
 package dev.clippy.bootstrap;
 
+import dev.clippy.utils.logger.CustomLogger;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.MapPropertySource;
@@ -9,6 +10,35 @@ import java.util.Objects;
 
 public final class SpringServerBootstrap {
     private SpringServerBootstrap() {
+    }
+
+    /**
+     * Shared server startup shell: configure the logging directory from {@code loggingFileName},
+     * run any server-specific pre-start hook, then boot Spring with {@code properties}. Every
+     * server core ({@code server}, {@code auth/server}, {@code combined-server}) goes through here
+     * so startup order and logging/property wiring live in one place.
+     */
+    public static ConfigurableApplicationContext start(
+            Class<?> applicationClass,
+            String loggingFileName,
+            Runnable beforeRun,
+            Map<String, Object> properties,
+            String propertySourceName
+    ) {
+        CustomLogger.configureDirectoryFromLogFile(loggingFileName);
+        if (beforeRun != null) {
+            beforeRun.run();
+        }
+        return run(applicationClass, properties, propertySourceName);
+    }
+
+    public static ConfigurableApplicationContext start(
+            Class<?> applicationClass,
+            String loggingFileName,
+            Map<String, Object> properties,
+            String propertySourceName
+    ) {
+        return start(applicationClass, loggingFileName, null, properties, propertySourceName);
     }
 
     public static ConfigurableApplicationContext run(
