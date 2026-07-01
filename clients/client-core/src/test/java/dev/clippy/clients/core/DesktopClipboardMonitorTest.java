@@ -67,7 +67,7 @@ class DesktopClipboardMonitorTest {
                 URI.create("http://127.0.0.1:1/clipboard"), auth, Duration.ofMillis(100));
         return new DesktopClipboardMonitor(
                 reader, apiClient, null, "client-a", fileLocker,
-                DesktopClipboardMonitor.Options.linux(offlineLog));
+                offlineLog, new LinuxClipboardPolicy());
     }
 
     private static RunningFileLocker startFileLocker(Path socket) throws Exception {

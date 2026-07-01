@@ -15,7 +15,8 @@ public final class DesktopClipboardMonitor {
     private final String authServerUrl;
     private final String clientId;
     private final OfflineFileLockerClient fileLocker;
-    private final Options options;
+    private final Path offlineLogPath;
+    private final DesktopClipboardPolicy policy;
     private String lastSentContent;
     private boolean previousReadFailed;
     private boolean previousSendFailed;
@@ -28,25 +29,27 @@ public final class DesktopClipboardMonitor {
             String authServerUrl,
             String clientId,
             OfflineFileLockerClient fileLocker,
-            Options options
+            Path offlineLogPath,
+            DesktopClipboardPolicy policy
     ) {
         this.clipboardReader = Objects.requireNonNull(clipboardReader, "clipboardReader");
         this.apiClient = Objects.requireNonNull(apiClient, "apiClient");
         this.authServerUrl = authServerUrl;
         this.clientId = Objects.requireNonNull(clientId, "clientId");
         this.fileLocker = Objects.requireNonNull(fileLocker, "fileLocker");
-        this.options = Objects.requireNonNull(options, "options");
+        this.offlineLogPath = Objects.requireNonNull(offlineLogPath, "offlineLogPath");
+        this.policy = Objects.requireNonNull(policy, "policy");
     }
 
     public void poll() {
-        if (options.flushPendingBeforeRead() && pendingOfflineEntry != null && !appendPendingOffline()) {
+        if (policy.flushPendingBeforeRead() && pendingOfflineEntry != null && !appendPendingOffline()) {
             return;
         }
 
         String content;
         try {
             content = clipboardReader.readText();
-            if (previousReadFailed && options.logReadRecovery()) {
+            if (previousReadFailed && policy.logReadRecovery()) {
                 System.out.printf("INFO clientId=%s endpoint=%s authServer=%s Clipboard read recovered.%n",
                         clientId, apiClient.endpoint(), displayAuthServer());
             }
@@ -56,7 +59,7 @@ public final class DesktopClipboardMonitor {
             return;
         }
 
-        if (!options.flushPendingBeforeRead() && pendingOfflineEntry != null) {
+        if (!policy.flushPendingBeforeRead() && pendingOfflineEntry != null) {
             if (!appendPendingOffline()) {
                 return;
             }
@@ -65,7 +68,7 @@ public final class DesktopClipboardMonitor {
             }
         }
 
-        if (content == null || options.ignoreEmptyContent() && content.isEmpty()
+        if (content == null || policy.ignoreEmptyContent() && content.isEmpty()
                 || Objects.equals(content, lastSentContent)) {
             return;
         }
@@ -107,7 +110,7 @@ public final class DesktopClipboardMonitor {
 
     private void logReadFailure(String message) {
         if (!previousReadFailed) {
-            String backend = options.includeBackendInReadErrors()
+            String backend = policy.includeBackendInReadErrors()
                     ? " backend=" + clipboardReader.name()
                     : "";
             System.err.printf("Clipboard read failed. clientId=%s%s error=%s%n", clientId, backend, message);
@@ -145,11 +148,11 @@ public final class DesktopClipboardMonitor {
             return true;
         }
         try {
-            fileLocker.append(options.offlineLogPath(), ClipboardJson.write(entry));
+            fileLocker.append(offlineLogPath, ClipboardJson.write(entry));
             lastSentContent = entry.content();
             pendingOfflineEntry = null;
             System.err.printf("Logged clipboard message to %s. clientId=%s chars=%d%n",
-                    options.offlineLogPath().toAbsolutePath(), clientId, entry.content().length());
+                    offlineLogPath.toAbsolutePath(), clientId, entry.content().length());
             return true;
         } catch (IOException exception) {
             System.err.printf("Clipboard send failed and local JSON log failed. clientId=%s error=%s%n",
@@ -160,25 +163,5 @@ public final class DesktopClipboardMonitor {
 
     private String displayAuthServer() {
         return authServerUrl == null ? "unset" : authServerUrl;
-    }
-
-    public record Options(
-            Path offlineLogPath,
-            boolean ignoreEmptyContent,
-            boolean flushPendingBeforeRead,
-            boolean includeBackendInReadErrors,
-            boolean logReadRecovery
-    ) {
-        public Options {
-            Objects.requireNonNull(offlineLogPath, "offlineLogPath");
-        }
-
-        public static Options linux(Path offlineLogPath) {
-            return new Options(offlineLogPath, true, true, true, false);
-        }
-
-        public static Options mac(Path offlineLogPath) {
-            return new Options(offlineLogPath, false, false, false, true);
-        }
     }
 }

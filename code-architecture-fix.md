@@ -125,9 +125,16 @@ Expected result:
 - Linux-specific audit behavior stays Linux-specific, but the main class no
   longer owns transport, serialization, and persistence details
 
-## 4. Replace the boolean-heavy `DesktopClipboardMonitor.Options`
+## 4. Replace the boolean-heavy `DesktopClipboardMonitor.Options` — completed
 
 Priority: medium
+
+The `Options` flag record is gone. A sealed `DesktopClipboardPolicy` interface with two
+named implementations, `LinuxClipboardPolicy` and `MacClipboardPolicy`, now models the
+platform decisions; the sealed hierarchy makes invalid flag combinations unconstructable.
+`DesktopClipboardMonitor` takes `(offlineLogPath, policy)` directly, and each platform main
+passes `new LinuxClipboardPolicy()` / `new MacClipboardPolicy()`. `DesktopClipboardPolicyTest`
+locks the two decision matrices.
 
 `DesktopClipboardMonitor` centralizes good logic, but its behavior is currently
 driven by a record with several booleans:

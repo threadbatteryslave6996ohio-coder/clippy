@@ -7,6 +7,7 @@ import dev.clippy.clients.core.ClientIdentity;
 import dev.clippy.clients.core.DesktopClientRunner;
 import dev.clippy.clients.core.DesktopClipboardMonitor;
 import dev.clippy.clients.core.ExceptionMessages;
+import dev.clippy.clients.core.LinuxClipboardPolicy;
 import dev.clippy.clients.core.OfflineFileLockerFactory;
 import dev.clippy.clients.core.PollIntervalValidator;
 import dev.clippy.clients.envs.ClientAuthSession;
@@ -45,7 +46,7 @@ public final class LinuxClipboardClientApp {
                 auditLogger.refreshListener());
         this.monitor = new DesktopClipboardMonitor(
                 clipboardReader, apiClient, authServerUrl, clientId, fileLocker,
-                DesktopClipboardMonitor.Options.linux(OFFLINE_LOG_PATH));
+                OFFLINE_LOG_PATH, new LinuxClipboardPolicy());
     }
 
     public static void main(String[] args) throws IOException {
