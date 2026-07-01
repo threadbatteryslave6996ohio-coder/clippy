@@ -333,9 +333,19 @@ Expected result:
 - fewer hand-written validation branches
 - less risk of slightly different error semantics across helpers
 
-## 10. Restore targeted app-level tests after the extraction
+## 10. Restore targeted app-level tests after the extraction — completed
 
 Priority: medium
+
+App-level and shared coverage was rebuilt alongside the extraction:
+`DesktopClientRunnerTest` (banner), `DesktopClipboardPolicyTest` (platform decision
+matrices), `ProcessEnvironmentSanitizerTest` + `AuthAuditLoggerTest` (Linux backend
+sanitization + auth-audit serialization), `ClipboardClientAppTest` (mac clipboard read,
+via an extracted `clipboardReader(Clipboard)` factory tested with a real headless
+`Clipboard`), and `DummyClientAppTest` now covers auth-refresh failure handling. The
+dummy client was also fixed: `sendCommand` catches the `RuntimeException` (missing/expired
+token or failed refresh) that `ClipboardApiClient` surfaces, instead of terminating the
+interactive client (bugs.md finding #3).
 
 The current extraction moved useful behavior into shared units, but platform
 tests were reduced hard:

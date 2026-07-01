@@ -25,9 +25,13 @@ public final class DummyClientApp {
     private final String clientId;
 
     private DummyClientApp(URI endpoint, String clientId, ClientAuthSession authSession) {
+        this(new ClipboardApiClient(endpoint, authSession, Duration.ofSeconds(10)), endpoint, clientId);
+    }
+
+    DummyClientApp(ClipboardApiClient apiClient, URI endpoint, String clientId) {
+        this.apiClient = apiClient;
         this.endpoint = endpoint;
         this.clientId = clientId;
-        this.apiClient = new ClipboardApiClient(endpoint, authSession, Duration.ofSeconds(10));
     }
 
     public static void main(String[] args) throws IOException, InterruptedException {
@@ -54,7 +58,7 @@ public final class DummyClientApp {
         }
     }
 
-    private boolean sendCommand(String command) {
+    boolean sendCommand(String command) {
         try {
             int statusCode = apiClient.create(new ClipboardEntry(clientId, command, Instant.now())).statusCode();
             if (statusCode < 200 || statusCode >= 300) {
@@ -71,6 +75,13 @@ public final class DummyClientApp {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             System.err.printf("Interrupted while sending command. endpoint=%s%n", endpoint);
+            return false;
+        } catch (RuntimeException exception) {
+            // A missing/expired token or a failed auth refresh surfaces here (e.g.
+            // AuthClientException or IllegalStateException from ClipboardApiClient). Report it
+            // like any other send failure instead of terminating the interactive client.
+            System.err.printf("Cannot authenticate command. endpoint=%s error=%s%n",
+                    endpoint, ExceptionMessages.messageWithCause(exception));
             return false;
         }
     }

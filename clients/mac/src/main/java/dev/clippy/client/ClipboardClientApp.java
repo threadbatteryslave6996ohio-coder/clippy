@@ -37,17 +37,21 @@ public final class ClipboardClientApp {
             ClientAuthSession authSession,
             OfflineFileLockerClient fileLocker
     ) {
-        ClipboardReader reader = () -> {
+        ClipboardApiClient apiClient = new ClipboardApiClient(endpoint, authSession, Duration.ofSeconds(10));
+        this.monitor = new DesktopClipboardMonitor(
+                clipboardReader(clipboard), apiClient, authServerUrl, clientId, fileLocker,
+                OFFLINE_LOG_PATH, new MacClipboardPolicy());
+    }
+
+    /** Reads the current string content of {@code clipboard}, or {@code null} when it holds no text. */
+    static ClipboardReader clipboardReader(Clipboard clipboard) {
+        return () -> {
             if (!clipboard.isDataFlavorAvailable(DataFlavor.stringFlavor)) {
                 return null;
             }
             Object data = clipboard.getData(DataFlavor.stringFlavor);
             return data instanceof String text ? text : null;
         };
-        ClipboardApiClient apiClient = new ClipboardApiClient(endpoint, authSession, Duration.ofSeconds(10));
-        this.monitor = new DesktopClipboardMonitor(
-                reader, apiClient, authServerUrl, clientId, fileLocker,
-                OFFLINE_LOG_PATH, new MacClipboardPolicy());
     }
 
     public static void main(String[] args) throws IOException {
