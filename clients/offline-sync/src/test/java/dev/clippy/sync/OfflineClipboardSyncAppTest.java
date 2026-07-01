@@ -35,7 +35,7 @@ class OfflineClipboardSyncAppTest {
                 ]
                 """;
 
-        List<OfflineClipboardSyncApp.ClipboardRecord> records = OfflineClipboardSyncApp.parseClipboardRecords(content, log);
+        List<ClipboardRecord> records = OfflineSnapshotParser.parseRecords(content, log);
 
         assertEquals(1, records.size());
         assertEquals("offline text", records.getFirst().content());
@@ -49,31 +49,25 @@ class OfflineClipboardSyncAppTest {
                 [{"clientId":"client-a","content":"%s","timestamp":"2026-06-23T12:00:00Z"}]
                 """.formatted("x".repeat(ClipboardLimits.MAX_CONTENT_CHARACTERS + 1));
 
-        List<OfflineClipboardSyncApp.ClipboardRecord> records =
-                OfflineClipboardSyncApp.parseClipboardRecords(content, log);
-        OfflineClipboardSyncApp app = new OfflineClipboardSyncApp(
-                URI.create("http://localhost:1/clipboard"),
-                "client-a",
-                new ClientAuthSession(null, "client-a", null, "token-a")
-        );
+        List<ClipboardRecord> records = OfflineSnapshotParser.parseRecords(content, log);
+        OfflineSyncService service = syncService(URI.create("http://localhost:1/clipboard"));
 
         assertEquals(1, records.size());
-        assertEquals(new OfflineClipboardSyncApp.SyncResult(0, 0), app.sync(records));
+        assertEquals(new SyncResult(0, 0), service.sync(records));
     }
 
     @Test
     void excludesOversizedOldClientBeforeOwnershipValidation() throws Exception {
-        List<OfflineClipboardSyncApp.ClipboardRecord> records = List.of(
-                new OfflineClipboardSyncApp.ClipboardRecord(
+        List<ClipboardRecord> records = List.of(
+                new ClipboardRecord(
                         "old-client",
                         "x".repeat(ClipboardLimits.MAX_CONTENT_CHARACTERS + 1),
                         Instant.parse("2026-06-23T11:00:00Z")),
-                new OfflineClipboardSyncApp.ClipboardRecord(
+                new ClipboardRecord(
                         "client-a", "valid", Instant.parse("2026-06-23T12:00:00Z"))
         );
 
-        List<OfflineClipboardSyncApp.ClipboardRecord> syncable =
-                OfflineClipboardSyncApp.syncableRecords(records, false);
+        List<ClipboardRecord> syncable = OfflineSyncService.syncableRecords(records, false);
 
         assertEquals(1, syncable.size());
         assertEquals("client-a", syncable.getFirst().clientId());
@@ -88,16 +82,15 @@ class OfflineClipboardSyncAppTest {
 
         try {
             URI endpoint = URI.create("http://localhost:" + server.getAddress().getPort() + "/clipboard");
-            ClientAuthSession auth = new ClientAuthSession(null, "client-a", null, "token-a");
-            OfflineClipboardSyncApp app = new OfflineClipboardSyncApp(endpoint, "client-a", auth);
-            List<OfflineClipboardSyncApp.ClipboardRecord> records = List.of(
-                    new OfflineClipboardSyncApp.ClipboardRecord(
+            OfflineSyncService service = syncService(endpoint);
+            List<ClipboardRecord> records = List.of(
+                    new ClipboardRecord(
                             "client-a", "already there", Instant.parse("2026-06-23T12:00:00.123456789Z")),
-                    new OfflineClipboardSyncApp.ClipboardRecord(
+                    new ClipboardRecord(
                             "client-a", "send me", Instant.parse("2026-06-23T13:00:00Z"))
             );
 
-            OfflineClipboardSyncApp.SyncResult result = app.sync(records);
+            SyncResult result = service.sync(records);
 
             assertEquals(1, result.alreadyPresent());
             assertEquals(1, result.sent());
@@ -124,21 +117,19 @@ class OfflineClipboardSyncAppTest {
 
         try {
             URI endpoint = URI.create("http://localhost:" + server.getAddress().getPort() + "/clipboard");
-            ClientAuthSession auth = new ClientAuthSession(null, "client-a", null, "token-a");
-            OfflineClipboardSyncApp app = new OfflineClipboardSyncApp(endpoint, "client-a", auth);
-            List<OfflineClipboardSyncApp.ClipboardRecord> changedRecords = List.of(
-                    new OfflineClipboardSyncApp.ClipboardRecord(
+            SyncMonitor monitor = monitor(endpoint);
+            List<ClipboardRecord> changedRecords = List.of(
+                    new ClipboardRecord(
                             "client-a", "send me", Instant.parse("2026-06-23T13:00:00Z"))
             );
-            OfflineClipboardSyncApp.ClipboardSnapshot changedSnapshot =
-                    new OfflineClipboardSyncApp.ClipboardSnapshot("[changed]", changedRecords);
-            app.monitor(() -> changedSnapshot, ignored -> { },
+            ClipboardSnapshot changedSnapshot = new ClipboardSnapshot("[changed]", changedRecords);
+            monitor.monitor(() -> changedSnapshot, ignored -> { },
                     snapshot -> {
                         clearedSnapshots.add(snapshot.content());
                         return true;
                     },
-                    new OfflineClipboardSyncApp.ClipboardSnapshot("[]", List.of()),
-                    OfflineClipboardSyncApp.DEFAULT_SYNC_INTERVAL, duration -> {
+                    new ClipboardSnapshot("[]", List.of()),
+                    SyncMonitor.DEFAULT_SYNC_INTERVAL, duration -> {
                 sleepDurations.add(duration);
                 if (sleepDurations.size() == 2) {
                     throw new InterruptedException("stop test loop");
@@ -160,15 +151,14 @@ class OfflineClipboardSyncAppTest {
     @Test
     void retriesInitialReadFailureInsteadOfExiting() throws Exception {
         List<Duration> sleepDurations = new ArrayList<>();
-        List<OfflineClipboardSyncApp.ClipboardRecord> expectedRecords = List.of(
-                new OfflineClipboardSyncApp.ClipboardRecord(
+        List<ClipboardRecord> expectedRecords = List.of(
+                new ClipboardRecord(
                         "client-a", "available later", Instant.parse("2026-06-23T14:00:00Z"))
         );
         int[] attempts = {0};
 
-        OfflineClipboardSyncApp.ClipboardSnapshot expectedSnapshot =
-                new OfflineClipboardSyncApp.ClipboardSnapshot("[available]", expectedRecords);
-        OfflineClipboardSyncApp.ClipboardSnapshot snapshot = OfflineClipboardSyncApp.awaitInitialSnapshot(
+        ClipboardSnapshot expectedSnapshot = new ClipboardSnapshot("[available]", expectedRecords);
+        ClipboardSnapshot snapshot = SyncMonitor.awaitInitialSnapshot(
                 () -> {
                     if (attempts[0]++ == 0) {
                         throw new IOException("file does not exist yet");
@@ -186,32 +176,32 @@ class OfflineClipboardSyncAppTest {
     @Test
     void waitsForUsableRecordsBeforeDerivingClientId() throws Exception {
         List<Duration> sleepDurations = new ArrayList<>();
-        List<OfflineClipboardSyncApp.ClipboardRecord> oversizedOnly = List.of(
-                new OfflineClipboardSyncApp.ClipboardRecord(
+        List<ClipboardRecord> oversizedOnly = List.of(
+                new ClipboardRecord(
                         "client-a",
                         "x".repeat(ClipboardLimits.MAX_CONTENT_CHARACTERS + 1),
                         Instant.parse("2026-06-23T16:00:00Z"))
         );
-        List<OfflineClipboardSyncApp.ClipboardRecord> usableRecords = List.of(
-                new OfflineClipboardSyncApp.ClipboardRecord(
+        List<ClipboardRecord> usableRecords = List.of(
+                new ClipboardRecord(
                         "client-a",
                         "usable",
                         Instant.parse("2026-06-23T16:05:00Z"))
         );
         int[] attempts = {0};
 
-        OfflineClipboardSyncApp.ClipboardSnapshot snapshot = OfflineClipboardSyncApp.awaitInitialSyncableSnapshot(
+        ClipboardSnapshot snapshot = SyncMonitor.awaitInitialSyncableSnapshot(
                 () -> {
                     if (attempts[0]++ == 0) {
-                        return new OfflineClipboardSyncApp.ClipboardSnapshot("[oversized]", oversizedOnly);
+                        return new ClipboardSnapshot("[oversized]", oversizedOnly);
                     }
-                    return new OfflineClipboardSyncApp.ClipboardSnapshot("[usable]", usableRecords);
+                    return new ClipboardSnapshot("[usable]", usableRecords);
                 }, ignored -> { }, ignored -> true,
-                OfflineClipboardSyncApp.DEFAULT_SYNC_INTERVAL,
+                SyncMonitor.DEFAULT_SYNC_INTERVAL,
                 sleepDurations::add
         );
 
-        assertEquals(new OfflineClipboardSyncApp.ClipboardSnapshot("[usable]", usableRecords), snapshot);
+        assertEquals(new ClipboardSnapshot("[usable]", usableRecords), snapshot);
         assertEquals(2, attempts[0]);
         assertEquals(List.of(Duration.ofMinutes(30)), sleepDurations);
     }
@@ -225,15 +215,14 @@ class OfflineClipboardSyncAppTest {
 
         try {
             URI endpoint = URI.create("http://localhost:" + server.getAddress().getPort() + "/clipboard");
-            OfflineClipboardSyncApp app = new OfflineClipboardSyncApp(
-                    endpoint, "client-a", new ClientAuthSession(null, "client-a", null, "token-a"));
-            OfflineClipboardSyncApp.ClipboardSnapshot snapshot = new OfflineClipboardSyncApp.ClipboardSnapshot(
+            SyncMonitor monitor = monitor(endpoint);
+            ClipboardSnapshot snapshot = new ClipboardSnapshot(
                     "[failed]",
-                    List.of(new OfflineClipboardSyncApp.ClipboardRecord(
+                    List.of(new ClipboardRecord(
                             "client-a", "keep me", Instant.parse("2026-06-23T15:00:00Z")))
             );
 
-            app.monitor(() -> snapshot, ignored -> { }, ignored -> {
+            monitor.monitor(() -> snapshot, ignored -> { }, ignored -> {
                 clearAttempts[0]++;
                 return true;
             }, snapshot, Duration.ofMinutes(30), ignored -> {
@@ -257,8 +246,7 @@ class OfflineClipboardSyncAppTest {
                 ]
                 """;
 
-        OfflineClipboardSyncApp.ClipboardSnapshot snapshot =
-                OfflineClipboardSyncApp.parseClipboardSnapshot(content, tempDir.resolve("offline.json"));
+        ClipboardSnapshot snapshot = OfflineSnapshotParser.parseSnapshot(content, tempDir.resolve("offline.json"));
 
         assertEquals(1, snapshot.records().size());
         assertEquals("valid", snapshot.records().getFirst().content());
@@ -276,8 +264,7 @@ class OfflineClipboardSyncAppTest {
                 ]
                 """;
 
-        OfflineClipboardSyncApp.ClipboardSnapshot snapshot =
-                OfflineClipboardSyncApp.parseClipboardSnapshot(content, tempDir.resolve("offline.json"));
+        ClipboardSnapshot snapshot = OfflineSnapshotParser.parseSnapshot(content, tempDir.resolve("offline.json"));
 
         assertEquals(0, snapshot.records().size());
         assertEquals(1, snapshot.rejections().size());
@@ -299,21 +286,20 @@ class OfflineClipboardSyncAppTest {
             respond(exchange, body.contains("reject me") ? 400 : 201, "");
         });
         server.start();
-        List<OfflineClipboardSyncApp.RejectedRecord> rejections = new ArrayList<>();
+        List<RejectedRecord> rejections = new ArrayList<>();
 
         try {
-            OfflineClipboardSyncApp app = new OfflineClipboardSyncApp(
-                    URI.create("http://localhost:" + server.getAddress().getPort() + "/clipboard"),
-                    "client-a", new ClientAuthSession(null, "client-a", null, "token-a"));
-            List<OfflineClipboardSyncApp.ClipboardRecord> records = List.of(
-                    new OfflineClipboardSyncApp.ClipboardRecord(
+            OfflineSyncService service = syncService(
+                    URI.create("http://localhost:" + server.getAddress().getPort() + "/clipboard"));
+            List<ClipboardRecord> records = List.of(
+                    new ClipboardRecord(
                             "client-a", "reject me", Instant.parse("2026-06-23T12:00:00Z")),
-                    new OfflineClipboardSyncApp.ClipboardRecord(
+                    new ClipboardRecord(
                             "client-a", "send me", Instant.parse("2026-06-23T12:01:00Z")));
 
-            OfflineClipboardSyncApp.SyncResult result = app.sync(records, rejections::add);
+            SyncResult result = service.sync(records, rejections::add);
 
-            assertEquals(new OfflineClipboardSyncApp.SyncResult(0, 1, 1), result);
+            assertEquals(new SyncResult(0, 1, 1), result);
             assertEquals(2, requests.size());
             assertEquals(1, rejections.size());
             assertEquals("HTTP 400", rejections.getFirst().reason());
@@ -324,20 +310,18 @@ class OfflineClipboardSyncAppTest {
 
     @Test
     void preservesSnapshotWhenDeadLetterWriteFails() throws Exception {
-        OfflineClipboardSyncApp app = new OfflineClipboardSyncApp(
-                URI.create("http://localhost:1/clipboard"),
-                "client-a", new ClientAuthSession(null, "client-a", null, "token-a"));
-        OfflineClipboardSyncApp.ClipboardSnapshot snapshot = new OfflineClipboardSyncApp.ClipboardSnapshot(
-                "[malformed]", List.of(), List.of(new OfflineClipboardSyncApp.RejectedRecord(
+        SyncMonitor monitor = monitor(URI.create("http://localhost:1/clipboard"));
+        ClipboardSnapshot snapshot = new ClipboardSnapshot(
+                "[malformed]", List.of(), List.of(new RejectedRecord(
                         "invalid-entry", "bad entry", "{}")));
         int[] clearAttempts = {0};
 
-        InterruptedException stopped = assertThrows(InterruptedException.class, () -> app.monitor(
+        InterruptedException stopped = assertThrows(InterruptedException.class, () -> monitor.monitor(
                 () -> snapshot,
                 ignored -> { throw new IOException("dead-letter unavailable"); },
                 ignored -> { clearAttempts[0]++; return true; },
                 snapshot,
-                OfflineClipboardSyncApp.DEFAULT_SYNC_INTERVAL,
+                SyncMonitor.DEFAULT_SYNC_INTERVAL,
                 ignored -> { throw new InterruptedException("stop test loop"); }));
 
         assertEquals("stop test loop", stopped.getMessage());
@@ -350,7 +334,7 @@ class OfflineClipboardSyncAppTest {
         int[] attempts = {0};
 
         IllegalStateException failure = assertThrows(IllegalStateException.class,
-                () -> OfflineClipboardSyncApp.awaitInitialSnapshot(
+                () -> SyncMonitor.awaitInitialSnapshot(
                         () -> { attempts[0]++; throw new IOException("still unavailable"); },
                         delays::add));
 
@@ -374,16 +358,15 @@ class OfflineClipboardSyncAppTest {
         int[] clearAttempts = {0};
 
         try {
-            OfflineClipboardSyncApp app = new OfflineClipboardSyncApp(
-                    URI.create("http://localhost:" + server.getAddress().getPort() + "/clipboard"),
-                    "client-a", new ClientAuthSession(null, "client-a", null, "token-a"));
-            OfflineClipboardSyncApp.ClipboardSnapshot snapshot = new OfflineClipboardSyncApp.ClipboardSnapshot(
-                    "[retry]", List.of(new OfflineClipboardSyncApp.ClipboardRecord(
+            SyncMonitor monitor = monitor(
+                    URI.create("http://localhost:" + server.getAddress().getPort() + "/clipboard"));
+            ClipboardSnapshot snapshot = new ClipboardSnapshot(
+                    "[retry]", List.of(new ClipboardRecord(
                             "client-a", "keep me", Instant.parse("2026-06-23T12:00:00Z"))));
 
-            IllegalStateException failure = assertThrows(IllegalStateException.class, () -> app.monitor(
+            IllegalStateException failure = assertThrows(IllegalStateException.class, () -> monitor.monitor(
                     () -> snapshot, ignored -> { }, ignored -> { clearAttempts[0]++; return true; },
-                    snapshot, OfflineClipboardSyncApp.DEFAULT_SYNC_INTERVAL, delays::add));
+                    snapshot, SyncMonitor.DEFAULT_SYNC_INTERVAL, delays::add));
 
             assertTrue(failure.getMessage().contains("Stopped after 5 retries"));
             assertEquals(6, requests[0]);
@@ -398,7 +381,7 @@ class OfflineClipboardSyncAppTest {
 
     @Test
     void producesStableDeadLetterPayloadForIdempotentAppendRetries() throws Exception {
-        OfflineClipboardSyncApp.RejectedRecord rejection = new OfflineClipboardSyncApp.RejectedRecord(
+        RejectedRecord rejection = new RejectedRecord(
                 "invalid-entry", "missing timestamp", "{\"content\":\"keep me\"}");
 
         assertEquals(rejection.toJson(), rejection.toJson());
@@ -422,16 +405,15 @@ class OfflineClipboardSyncAppTest {
         List<Duration> delays = new ArrayList<>();
 
         try {
-            OfflineClipboardSyncApp app = new OfflineClipboardSyncApp(
-                    URI.create("http://localhost:" + server.getAddress().getPort() + "/clipboard"),
-                    "client-a", new ClientAuthSession(null, "client-a", null, "token-a"));
-            OfflineClipboardSyncApp.ClipboardSnapshot snapshot = new OfflineClipboardSyncApp.ClipboardSnapshot(
-                    "[retry]", List.of(new OfflineClipboardSyncApp.ClipboardRecord(
+            SyncMonitor monitor = monitor(
+                    URI.create("http://localhost:" + server.getAddress().getPort() + "/clipboard"));
+            ClipboardSnapshot snapshot = new ClipboardSnapshot(
+                    "[retry]", List.of(new ClipboardRecord(
                             "client-a", "send me", Instant.parse("2026-06-23T12:00:00Z"))));
 
-            assertThrows(InterruptedException.class, () -> app.monitor(
+            assertThrows(InterruptedException.class, () -> monitor.monitor(
                     () -> snapshot, ignored -> { }, ignored -> true, snapshot,
-                    OfflineClipboardSyncApp.DEFAULT_SYNC_INTERVAL, delay -> {
+                    SyncMonitor.DEFAULT_SYNC_INTERVAL, delay -> {
                         delays.add(delay);
                         if (delays.size() == 2) {
                             throw new InterruptedException("stop test loop");
@@ -442,6 +424,15 @@ class OfflineClipboardSyncAppTest {
         }
 
         assertEquals(List.of(Duration.ofSeconds(5), Duration.ofMinutes(30)), delays);
+    }
+
+    private static OfflineSyncService syncService(URI endpoint) {
+        ClientAuthSession auth = new ClientAuthSession(null, "client-a", null, "token-a");
+        return new OfflineSyncService(new RemoteClipboardGateway(endpoint, auth, "client-a"), "client-a");
+    }
+
+    private static SyncMonitor monitor(URI endpoint) {
+        return new SyncMonitor(syncService(endpoint), "client-a");
     }
 
     private static void handleClipboard(HttpExchange exchange, List<String> requests) throws IOException {

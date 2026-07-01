@@ -1,7 +1,7 @@
 package dev.clippy.clients.envs;
 
+import dev.clippy.auth.api.LoginResponse;
 import dev.clippy.auth.client.ClippyAuthClient;
-import dev.clippy.auth.client.LoginResponse;
 
 import java.util.Objects;
 

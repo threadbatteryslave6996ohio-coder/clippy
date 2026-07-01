@@ -38,9 +38,6 @@ public final class EnvClassBuilder {
 
     private void add(EnvOption<?> option) {
         Objects.requireNonNull(option, "option");
-        EnvOption<?> previous = options.putIfAbsent(option.name(), option);
-        if (previous != null) {
-            throw new IllegalArgumentException("Duplicate environment option: " + option.name());
-        }
+        EnvOptions.putUnique(options, option);
     }
 }

@@ -1,12 +1,11 @@
 package dev.clippy.server;
 
+import dev.clippy.bootstrap.SpringServerBootstrap;
 import dev.clippy.utils.envmanager.Env;
-import org.springframework.boot.SpringApplication;
+import dev.clippy.utils.logger.CustomLogger;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.core.env.MapPropertySource;
 
-import java.nio.file.Path;
 import java.util.Map;
 
 @SpringBootApplication
@@ -18,20 +17,8 @@ public class ClippyServerApplication {
      */
     public static ConfigurableApplicationContext start(Map<String, String> environment) {
         Env env = ServerEnvs.from(environment);
-        configureCustomLoggerDirectory(env);
-        SpringApplication application = new SpringApplication(ClippyServerApplication.class);
+        CustomLogger.configureDirectoryFromLogFile(env.get(ServerEnvs.LOGGING_FILE_NAME));
         Map<String, Object> properties = ServerEnvs.springProperties(env);
-        application.setDefaultProperties(properties);
-        application.addInitializers(context -> context.getEnvironment().getPropertySources()
-                .addFirst(new MapPropertySource("clippyServerLauncher", properties)));
-        return application.run();
-    }
-
-    private static void configureCustomLoggerDirectory(Env env) {
-        String loggingFileName = env.get(ServerEnvs.LOGGING_FILE_NAME);
-        Path loggingPath = Path.of(loggingFileName == null ? "" : loggingFileName.trim());
-        Path parentDirectory = loggingPath.getParent();
-        String customLoggerDir = parentDirectory == null ? Path.of(".").toString() : parentDirectory.toString();
-        System.setProperty("custom.logger.dir", customLoggerDir);
+        return SpringServerBootstrap.run(ClippyServerApplication.class, properties, "clippyServerLauncher");
     }
 }

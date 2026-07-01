@@ -12,7 +12,15 @@
 
     <artifactId>clippy-dummy-client</artifactId>
 
+    <properties>
+        <mainClass>dev.clippy.dummy.DummyClientApp</mainClass>
+    </properties>
+
     <dependencies>
+        <dependency>
+            <groupId>dev.clippy</groupId>
+            <artifactId>clippy-client-core</artifactId>
+        </dependency>
         <dependency>
             <groupId>dev.clippy</groupId>
             <artifactId>clippy-client-envs</artifactId>
@@ -32,32 +40,7 @@
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <configuration>
-                    <archive>
-                        <manifest>
-                            <mainClass>dev.clippy.dummy.DummyClientApp</mainClass>
-                        </manifest>
-                    </archive>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <phase>package</phase>
-                        <goals><goal>shade</goal></goals>
-                        <configuration>
-                            <createDependencyReducedPom>false</createDependencyReducedPom>
-                            <transformers>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>dev.clippy.dummy.DummyClientApp</mainClass>
-                                </transformer>
-                            </transformers>
-                        </configuration>
-                    </execution>
-                </executions>
             </plugin>
         </plugins>
     </build>

@@ -11,10 +11,7 @@ public final class EnvSchema {
     EnvSchema(Collection<EnvOption<?>> options) {
         Map<String, EnvOption<?>> copied = new LinkedHashMap<>();
         for (EnvOption<?> option : options) {
-            EnvOption<?> previous = copied.putIfAbsent(option.name(), option);
-            if (previous != null) {
-                throw new IllegalArgumentException("Duplicate environment option: " + option.name());
-            }
+            EnvOptions.putUnique(copied, option);
         }
         this.optionsByName = Map.copyOf(copied);
     }

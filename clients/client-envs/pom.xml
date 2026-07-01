@@ -15,6 +15,10 @@
     <dependencies>
         <dependency>
             <groupId>dev.clippy</groupId>
+            <artifactId>clippy-auth-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>dev.clippy</groupId>
             <artifactId>clippy-auth-client</artifactId>
         </dependency>
         <dependency>

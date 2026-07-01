@@ -4,7 +4,6 @@ import com.zaxxer.hikari.HikariDataSource;
 import dev.clippy.server.ClipboardEntry;
 import dev.clippy.server.ClipboardEntryRepository;
 import jakarta.persistence.EntityManagerFactory;
-import org.hibernate.cfg.AvailableSettings;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.context.annotation.Bean;
@@ -18,8 +17,6 @@ import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.sql.DataSource;
-import java.util.HashMap;
-import java.util.Map;
 
 @Configuration
 @EnableJpaRepositories(
@@ -51,7 +48,8 @@ class CombinedClipboardDatabaseConfiguration {
         factory.setPackagesToScan(ClipboardEntry.class.getPackageName());
         factory.setPersistenceUnitName("clipboard");
         factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
-        factory.setJpaPropertyMap(jpaProperties(environment, "clippy.clipboard.jpa.hibernate.ddl-auto"));
+        factory.setJpaPropertyMap(CombinedJpaProperties.from(
+                environment, "clippy.clipboard.jpa.hibernate.ddl-auto"));
         return factory;
     }
 
@@ -61,12 +59,5 @@ class CombinedClipboardDatabaseConfiguration {
             @Qualifier("clipboardEntityManagerFactory") EntityManagerFactory entityManagerFactory
     ) {
         return new JpaTransactionManager(entityManagerFactory);
-    }
-
-    private static Map<String, Object> jpaProperties(Environment environment, String ddlAutoProperty) {
-        Map<String, Object> properties = new HashMap<>();
-        properties.put(AvailableSettings.HBM2DDL_AUTO, environment.getRequiredProperty(ddlAutoProperty));
-        properties.put("hibernate.jdbc.time_zone", environment.getRequiredProperty("clippy.jpa.jdbc-time-zone"));
-        return properties;
     }
 }
