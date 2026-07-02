@@ -9,8 +9,8 @@ Read the root `README.md` and the README for the component being changed before 
 ## Repository layout
 
 - `server`: Spring Boot clipboard API and persistence.
-- `auth/server`: Spring Boot authentication service.
-- `auth/client`: shared Java authentication client.
+- `../auth/server`: parent-owned Spring Boot authentication service.
+- `../auth/client`: parent-owned shared Java authentication client.
 - `utils`: shared environment and logging utilities.
 - `clients/client-envs`: shared client configuration and authentication session code.
 - `clients/file-locker`: local offline clipboard storage service.

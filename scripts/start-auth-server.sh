@@ -21,6 +21,6 @@ export AUTH_JPA_HIBERNATE_DDL_AUTO="${AUTH_JPA_HIBERNATE_DDL_AUTO:-update}"
 export AUTH_JPA_JDBC_TIME_ZONE="${AUTH_JPA_JDBC_TIME_ZONE:-UTC}"
 
 mvn -q -Dmaven.repo.local="$MAVEN_REPO_LOCAL" \
-  -pl auth/server -am -Dmaven.test.skip=true package "$@"
+  -pl ../auth/server -am -Dmaven.test.skip=true package "$@"
 
-exec java -jar auth/server/target/clippy-auth-server-0.1.0-SNAPSHOT-exec.jar
+exec java -jar ../auth/server/target/clippy-auth-server-0.1.0-SNAPSHOT-exec.jar

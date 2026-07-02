@@ -10,11 +10,11 @@
 
     <modules>
         <module>utils</module>
-        <module>auth/api</module>
-        <module>auth/client</module>
+        <module>../auth/api</module>
+        <module>../auth/client</module>
         <module>server-bootstrap</module>
         <module>server</module>
-        <module>auth/server</module>
+        <module>../auth/server</module>
         <module>combined-server</module>
         <module>clients/client-envs</module>
         <module>clients/client-core</module>

@@ -13,11 +13,9 @@ separate Kotlin/Gradle project under `clients/android`.
 - Docker with Compose for local databases and integration tests
 - Android Studio or a compatible Android toolchain for the Android client
 
-The `auth/` directory is a git submodule. Initialize it after cloning:
-
-```bash
-git submodule update --init --recursive
-```
+Authentication is supplied by the parent repository's sibling `../auth`
+directory. Clone this repository through the composition repository when you
+need to build modules that depend on auth.
 
 Verify the Java toolchain before troubleshooting Maven compilation errors:
 
@@ -108,9 +106,9 @@ Shell environment variables override `.env` values.
 - [Clipboard server](server/README.md)
 - [Combined server](combined-server/README.md)
 - [Shared server bootstrap](server-bootstrap/README.md)
-- [Auth server](auth/server/README.md)
-- [Auth API contracts](auth/api/README.md)
-- [Auth client module](auth/client/README.md)
+- [Auth server](../auth/server/README.md)
+- [Auth API contracts](../auth/api/README.md)
+- [Auth client module](../auth/client/README.md)
 - [macOS client](clients/mac/README.md)
 - [Linux client](clients/linux/README.md)
 - [Offline sync client](clients/offline-sync/README.md)

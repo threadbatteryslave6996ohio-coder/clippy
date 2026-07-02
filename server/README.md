@@ -16,8 +16,8 @@ Start the app database on port `5432` and the auth database on port `5433` using
 Run the auth server from the repository root in one terminal:
 
 ```bash
-cd ~/Desktop/clippy
-mvn -pl auth/server spring-boot:run
+cd /path/to/jarvis-klippy/klippy
+mvn -pl ../auth/server spring-boot:run
 ```
 
 Build and run this app server from the repository root in another terminal:

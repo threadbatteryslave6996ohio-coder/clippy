@@ -55,7 +55,8 @@ services:
   auth-server:
     image: clippy-app:local
     build:
-      context: .
+      context: ..
+      dockerfile: klippy/Dockerfile
     container_name: clippy-auth-server
     profiles: ["separate"]
     command: ["java", "-jar", "/app/clippy-auth-server.jar"]
@@ -77,7 +78,8 @@ services:
   clipboard-server:
     image: clippy-app:local
     build:
-      context: .
+      context: ..
+      dockerfile: klippy/Dockerfile
     container_name: clippy-server
     profiles: ["separate"]
     command: ["java", "-jar", "/app/clippy-server.jar"]
@@ -103,7 +105,8 @@ services:
   combined-server:
     image: clippy-app:local
     build:
-      context: .
+      context: ..
+      dockerfile: klippy/Dockerfile
     container_name: clippy-combined-server
     profiles: ["combined"]
     command: ["java", "-jar", "/app/clippy-combined-server.jar"]

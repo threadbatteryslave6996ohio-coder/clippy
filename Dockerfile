@@ -8,13 +8,13 @@
 FROM maven:3-eclipse-temurin-25 AS build
 WORKDIR /workspace
 
-# Copy the full reactor. .dockerignore keeps target/, .git/, logs and local
-# secrets (root .env) out of the build context.
+# Copy the parent reactor. The parent .dockerignore keeps target/, Git data,
+# logs, Terraform state, and local secrets out of the build context.
 COPY . .
 
 RUN --mount=type=cache,target=/root/.m2 \
     mvn -B -DskipTests \
-        -pl server,auth/server,combined-server -am \
+        -pl :clippy-server,:clippy-auth-server,:clippy-combined-server -am \
         package
 
 # ---------------------------------------------------------------------------
@@ -24,9 +24,9 @@ RUN --mount=type=cache,target=/root/.m2 \
 FROM eclipse-temurin:25-jdk AS runtime
 WORKDIR /app
 
-COPY --from=build /workspace/server/target/clippy-server-0.1.0-SNAPSHOT-exec.jar            /app/clippy-server.jar
-COPY --from=build /workspace/auth/server/target/clippy-auth-server-0.1.0-SNAPSHOT-exec.jar  /app/clippy-auth-server.jar
-COPY --from=build /workspace/combined-server/target/clippy-combined-server-0.1.0-SNAPSHOT.jar /app/clippy-combined-server.jar
+COPY --from=build /workspace/klippy/server/target/clippy-server-0.1.0-SNAPSHOT-exec.jar              /app/clippy-server.jar
+COPY --from=build /workspace/auth/server/target/clippy-auth-server-0.1.0-SNAPSHOT-exec.jar           /app/clippy-auth-server.jar
+COPY --from=build /workspace/klippy/combined-server/target/clippy-combined-server-0.1.0-SNAPSHOT.jar /app/clippy-combined-server.jar
 
 # Spring Boot writes to the LOGGING_FILE_NAME path (relative to /app).
 RUN mkdir -p /app/logs /app/config
