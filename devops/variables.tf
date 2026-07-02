@@ -38,6 +38,23 @@ variable "postgres_database_name" {
   default     = "clippy"
 }
 
+variable "storage_container_name" {
+  description = "Blob container name for the Clippy storage account."
+  type        = string
+  default     = "clippy"
+
+  validation {
+    condition = (
+      length(var.storage_container_name) >= 3 &&
+      length(var.storage_container_name) <= 63 &&
+      can(regex("^[a-z0-9][a-z0-9-]*[a-z0-9]$", var.storage_container_name)) &&
+      !strcontains(var.storage_container_name, "--")
+    )
+
+    error_message = "storage_container_name must be 3-63 characters of lowercase letters, numbers, or hyphens, start and end with a letter or number, and not contain consecutive hyphens."
+  }
+}
+
 variable "allowed_ip_addresses" {
   description = "Public IPv4 addresses allowed to connect to PostgreSQL."
   type        = set(string)

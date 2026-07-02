@@ -12,7 +12,9 @@ The same Terraform can optionally create an Azure Linux VM as an EC2-style serve
 ## Layout
 
 - `main.tf`: provider setup, random suffix, and shared resource group.
+- `application-identity.tf`: shared service principal and storage role assignment.
 - `database.tf`: Azure PostgreSQL server, database, and firewall rules.
+- `storage.tf`: Azure storage account and private blob container.
 - `compute.tf`: optional server VM, networking, security group, and VM bootstrap wiring.
 - `variables.tf`: module inputs.
 - `outputs.tf`: module outputs.
@@ -59,11 +61,42 @@ export SPRING_DATASOURCE_USERNAME="$(terraform output -raw spring_datasource_use
 export SPRING_DATASOURCE_PASSWORD="<postgres_admin_password>"
 ```
 
+If you need the storage resources, use:
+
+```bash
+terraform output -raw storage_account_name
+terraform output -raw storage_container_name
+```
+
+For applications running outside the Azure VM, retrieve the shared service-principal
+credentials as JSON:
+
+```bash
+terraform output -json application_credentials
+```
+
+This sensitive output contains `tenant_id`, `client_id`, `client_secret`,
+`storage_account_name`, and `storage_container_name`. The secret is stored in Terraform
+state; keep the state and command output private.
+
 If `create_server_vm` is enabled, use:
 
 ```bash
 terraform output -raw server_url
 terraform output -raw server_ssh_command
+```
+
+The server VM has a system-assigned managed identity with `Storage Blob Data Contributor`
+access to the storage account. After installing Azure CLI on the VM, authenticate without
+storing credentials:
+
+```bash
+az login --identity
+az storage blob list \
+  --account-name clippyw70lug \
+  --container-name clippy \
+  --auth-mode login \
+  --output table
 ```
 
 The VM runs these services:
