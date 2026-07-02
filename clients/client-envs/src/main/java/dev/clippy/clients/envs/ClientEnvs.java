@@ -3,6 +3,7 @@ package dev.clippy.clients.envs;
 import dev.clippy.utils.envmanager.Env;
 import dev.clippy.utils.envmanager.EnvFiles;
 import dev.clippy.utils.envmanager.EnvOption;
+import dev.clippy.utils.envmanager.EnvSnapshotLogger;
 import dev.clippy.utils.envmanager.EnvSchema;
 import dev.clippy.utils.envmanager.EnvType;
 
@@ -46,7 +47,15 @@ public final class ClientEnvs {
         return from(EnvFiles.load());
     }
 
+    public static Env load(EnvSnapshotLogger logger) throws IOException {
+        return from(EnvFiles.load(), logger);
+    }
+
     public static Env from(Map<String, String> source) {
         return ENV.from(source);
+    }
+
+    public static Env from(Map<String, String> source, EnvSnapshotLogger logger) {
+        return logger == null ? ENV.from(source) : ENV.from(source, logger);
     }
 }

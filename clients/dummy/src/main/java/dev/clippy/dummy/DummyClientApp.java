@@ -3,6 +3,7 @@ package dev.clippy.dummy;
 import dev.clippy.clients.envs.ClientAuthSession;
 import dev.clippy.clients.envs.ClientEnvs;
 import dev.clippy.utils.envmanager.Env;
+import dev.clippy.utils.envmanager.EnvSnapshotLogger;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -34,7 +35,7 @@ public final class DummyClientApp {
     }
 
     public static void main(String[] args) throws IOException, InterruptedException {
-        Env env = ClientEnvs.load();
+        Env env = ClientEnvs.load(EnvSnapshotLogger.consoleOnly("dummy-client-env"));
         String authServerUrl = env.has(ClientEnvs.AUTH_SERVER_URL) ? env.get(ClientEnvs.AUTH_SERVER_URL) : null;
         String clientId = env.has(ClientEnvs.CLIENT_ID) ? env.get(ClientEnvs.CLIENT_ID) : defaultClientId();
         String clientSecret = env.has(ClientEnvs.CLIENT_SECRET) ? env.get(ClientEnvs.CLIENT_SECRET) : null;
